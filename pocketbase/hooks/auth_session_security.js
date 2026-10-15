@@ -11,6 +11,47 @@
 // 6. TODAS as funções e lógica mantidas estritamente INLINE dentro de cada callback (PocketBase VM pool isolation).
 
 // -------------------------------------------------------------
+// MIDDLEWARE GLOBAL: IMPEDIMENTO DE ACESSO A ROTAS CLÍNICAS / SENSÍVEIS
+// ANTES DA CONCLUSÃO DO SEGUNDO FATOR (SESSÃO PLENA EXIGIDA)
+// -------------------------------------------------------------
+routerUse((e) => {
+  const reqPath = (e.request ? e.request.url.path : '') || ''
+
+  // Se o usuário está autenticado
+  if (e.auth) {
+    const authUser = e.auth
+    const mfaEnabled = authUser.getBool('mfa_enabled')
+    const mfaEnforced = authUser.getBool('mfa_enforced')
+
+    // Se o usuário possui MFA ativado ou imposto pelo perfil
+    if (mfaEnabled || mfaEnforced) {
+      // Verificar se a rota atual é de rotina clínica ou coleção restrita
+      const isMfaBypassRoute =
+        reqPath.startsWith('/backend/v1/auth/mfa/') ||
+        reqPath.startsWith('/backend/v1/auth/sessions/') ||
+        reqPath.startsWith('/backend/v1/infra/') ||
+        reqPath === '/api/collections/users/auth-refresh' ||
+        reqPath.startsWith('/api/collections/audit_logs') ||
+        reqPath.startsWith('/api/collections/mfa_recovery_codes') ||
+        reqPath === '/api/collections/users' ||
+        reqPath.startsWith('/api/collections/users/records')
+
+      if (!isMfaBypassRoute) {
+        // Verificar se completou o segundo fator
+        const verifiedAt = authUser.getString('mfa_verified_at')
+        if (!verifiedAt) {
+          throw new ForbiddenError(
+            'Segundo fator de autenticação (MFA) pendente. Conclua a verificação em duas etapas para acessar registros clínicos.',
+          )
+        }
+      }
+    }
+  }
+
+  return e.next()
+})
+
+// -------------------------------------------------------------
 // 1. STATUS E CONFIGURAÇÃO DO SEGUNDO FATOR DO USUÁRIO
 // GET /backend/v1/auth/mfa/status
 // -------------------------------------------------------------
@@ -83,7 +124,7 @@ routerAdd('GET', '/backend/v1/auth/mfa/status', (e) => {
     sessionSecurity: {
       tokenKeyRotationSupported: true,
       lastRevokedAt: lastRevokedAt || null,
-      authTokenDurationSeconds: 604800,
+      authTokenDurationSeconds: 43200, // 12 horas (Etapa 9B)
     },
   })
 })
@@ -285,9 +326,25 @@ routerAdd('POST', '/backend/v1/auth/mfa/disable', (e) => {
 
   const code = (body.code || '').trim()
   const password = body.password || ''
+  const targetUserId = body.target_user_id || authRecord.id
 
-  const user = $app.findRecordById('users', authRecord.id)
+  // Verificar se é desativação administrativa
+  let isAdminAction = false
+  if (targetUserId !== authRecord.id) {
+    const userOrgs = $app.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${authRecord.id}' && role = 'admin' && is_active = true`,
+      '',
+      1,
+      0,
+    )
+    if (userOrgs.length === 0) {
+      throw new ForbiddenError('Apenas administradores podem desativar o MFA de outros usuários.')
+    }
+    isAdminAction = true
+  }
 
+  const user = $app.findRecordById('users', targetUserId)
   if (user.getBool('mfa_enabled')) {
     const secret = user.getString('mfa_secret')
 
@@ -314,18 +371,18 @@ routerAdd('POST', '/backend/v1/auth/mfa/disable', (e) => {
       }
     }
 
-    if (!isValid && !password) {
+    // Se for ação administrativa autorizada, permite reversão assistida de contingência
+    if (!isValid && !password && !isAdminAction) {
       throw new BadRequestError(
         'Para desativar o segundo fator, informe um código autenticador válido de confirmação.',
       )
     }
   }
-
   user.set('mfa_enabled', false)
+  user.set('mfa_enforced', false)
   user.set('mfa_secret', '')
   user.set('mfa_verified_at', '')
   $app.save(user)
-
   try {
     const oldCodes = $app.findRecordsByFilter(
       'mfa_recovery_codes',
@@ -342,15 +399,19 @@ routerAdd('POST', '/backend/v1/auth/mfa/disable', (e) => {
   try {
     const auditCol = $app.findCollectionByNameOrId('audit_logs')
     const auditRec = new Record(auditCol)
-    auditRec.set('user_id', user.id)
-    auditRec.set('action', 'MFA_DISABLED')
+    auditRec.set('user_id', authRecord.id)
+    auditRec.set('action', isAdminAction ? 'MFA_DISABLED_ADMIN_RESET' : 'MFA_DISABLED')
     auditRec.set('target_collection', 'users')
     auditRec.set('target_id', user.id)
     auditRec.set('status', 'SUCCESS')
-    auditRec.set('details', 'Segundo fator de autenticação desativado pelo usuário.')
+    auditRec.set(
+      'details',
+      isAdminAction
+        ? `Segundo fator de autenticação resetado/desativado administrativamente pelo admin ${authRecord.id} para recuperação de acesso.`
+        : 'Segundo fator de autenticação desativado pelo próprio usuário.',
+    )
     $app.save(auditRec)
   } catch (_) {}
-
   return e.json(200, {
     success: true,
     message: 'Segundo fator de autenticação desativado.',
@@ -379,6 +440,75 @@ routerAdd('POST', '/backend/v1/auth/mfa/verify-login', (e) => {
   const user = $app.findRecordById('users', userId)
   if (!user.getBool('is_active')) {
     throw new ForbiddenError('Usuário bloqueado ou desativado administrativamente.')
+  }
+
+  // 1. CHECAGEM DE RATE LIMIT / BLOQUEIO TEMPORÁRIO (5 tentativas -> 15 min de bloqueio)
+  // Utiliza a trilha audit_logs para contar falhas recentes nos últimos 15 minutos (persistente entre instâncias do worker)
+  const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString()
+  const recentFailures = $app.findRecordsByFilter(
+    'audit_logs',
+    `target_id = '${userId}' && action = 'MFA_LOGIN_REJECTED' && created >= '${fifteenMinutesAgo}'`,
+    '-created',
+    10,
+    0,
+  )
+
+  if (recentFailures.length >= 5) {
+    try {
+      const auditCol = $app.findCollectionByNameOrId('audit_logs')
+      const auditRec = new Record(auditCol)
+      auditRec.set('user_id', user.id)
+      auditRec.set('action', 'MFA_RATE_LIMIT_BLOCKED')
+      auditRec.set('target_collection', 'users')
+      auditRec.set('target_id', user.id)
+      auditRec.set('status', 'REJECTED')
+      auditRec.set(
+        'details',
+        'Tentativa de MFA bloqueada por excesso de tentativas consecutivas (5 falhas nos últimos 15 minutos).',
+      )
+      $app.save(auditRec)
+    } catch (_) {}
+
+    throw new ForbiddenError(
+      'Muitas tentativas consecutivas sem sucesso. Acesso temporariamente bloqueado por 15 minutos.',
+    )
+  }
+
+  // 2. PROTEÇÃO CONTRA REPLAY (CÓDIGO TOTP NA MESMA JANELA TEMPORAL DE 30s)
+  // Verifica se o mesmo código foi validado com sucesso nos últimos 45 segundos
+  const fortyFiveSecondsAgo = new Date(Date.now() - 45 * 1000).toISOString()
+  const codeHashReplay = $security.sha256(code)
+  const recentSuccess = $app.findRecordsByFilter(
+    'audit_logs',
+    `target_id = '${userId}' && action = 'MFA_LOGIN_SUCCESS' && created >= '${fortyFiveSecondsAgo}'`,
+    '-created',
+    5,
+    0,
+  )
+
+  const isReplay = recentSuccess.some(
+    (log) => log.getString('details').indexOf(codeHashReplay.substring(0, 16)) !== -1,
+  )
+
+  if (!isRecovery && isReplay) {
+    try {
+      const auditCol = $app.findCollectionByNameOrId('audit_logs')
+      const auditRec = new Record(auditCol)
+      auditRec.set('user_id', user.id)
+      auditRec.set('action', 'MFA_REPLAY_REJECTED')
+      auditRec.set('target_collection', 'users')
+      auditRec.set('target_id', user.id)
+      auditRec.set('status', 'REJECTED')
+      auditRec.set(
+        'details',
+        'Tentativa de reutilização (replay) do mesmo código TOTP dentro da mesma janela temporal de 30 segundos.',
+      )
+      $app.save(auditRec)
+    } catch (_) {}
+
+    throw new BadRequestError(
+      'Código TOTP já utilizado nesta janela de 30 segundos. Aguarde o próximo ciclo para gerar um novo código.',
+    )
   }
 
   let codeVerified = false
@@ -425,6 +555,7 @@ routerAdd('POST', '/backend/v1/auth/mfa/verify-login', (e) => {
   }
 
   if (!codeVerified) {
+    const currentFailCount = recentFailures.length + 1
     try {
       const auditCol = $app.findCollectionByNameOrId('audit_logs')
       const auditRec = new Record(auditCol)
@@ -433,9 +564,18 @@ routerAdd('POST', '/backend/v1/auth/mfa/verify-login', (e) => {
       auditRec.set('target_collection', 'users')
       auditRec.set('target_id', user.id)
       auditRec.set('status', 'REJECTED')
-      auditRec.set('details', 'Tentativa de segundo fator com código inválido rejeitada.')
+      auditRec.set(
+        'details',
+        `Tentativa de segundo fator incorreta (${currentFailCount}/5).${currentFailCount >= 5 ? ' Conta bloqueada temporariamente por 15 minutos.' : ''}`,
+      )
       $app.save(auditRec)
     } catch (_) {}
+
+    if (currentFailCount >= 5) {
+      throw new ForbiddenError(
+        'Limite de tentativas de MFA atingido. Sua conta foi temporariamente bloqueada por 15 minutos.',
+      )
+    }
 
     throw new BadRequestError('Código do segundo fator inválido ou expirado.')
   }
@@ -459,7 +599,7 @@ routerAdd('POST', '/backend/v1/auth/mfa/verify-login', (e) => {
     auditRec.set('status', 'SUCCESS')
     auditRec.set(
       'details',
-      `Login com segundo fator concluído com sucesso (${isRecovery ? 'código de recuperação' : 'TOTP'}).`,
+      `Login com segundo fator concluído com sucesso (${isRecovery ? 'código de recuperação' : 'TOTP'}). [fp:${codeHashReplay.substring(0, 16)}]`,
     )
     $app.save(auditRec)
   } catch (_) {}

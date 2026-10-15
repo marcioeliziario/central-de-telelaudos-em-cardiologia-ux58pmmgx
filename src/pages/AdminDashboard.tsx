@@ -62,6 +62,7 @@ export default function AdminDashboard() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [contractSlas, setContractSlas] = useState<any[]>([])
   const [isRefreshingSla, setIsRefreshingSla] = useState(false)
+  const [slaJobTelemetry, setSlaJobTelemetry] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   // Estados de formulários simples para criar clínica/unidade/médico
@@ -74,7 +75,7 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const [orgs, unts, docs, uos, exms, pts, logs, slas] = await Promise.all([
+      const [orgs, unts, docs, uos, exms, pts, logs, slas, jobStatus] = await Promise.all([
         organizationService.getAll().catch(() => []),
         unitService.getAll().catch(() => []),
         doctorService.getAll().catch(() => []),
@@ -83,6 +84,7 @@ export default function AdminDashboard() {
         patientService.getAll().catch(() => []),
         auditService.getRecent(30).catch(() => []),
         slaService.getAll().catch(() => []),
+        slaService.getJobStatus().catch(() => null),
       ])
       setOrganizations(orgs)
       setUnits(unts)
@@ -92,6 +94,7 @@ export default function AdminDashboard() {
       setPatients(pts)
       setAuditLogs(logs)
       setContractSlas(slas)
+      setSlaJobTelemetry(jobStatus)
     } finally {
       setLoading(false)
     }
@@ -100,10 +103,10 @@ export default function AdminDashboard() {
   const handleRefreshSla = async () => {
     setIsRefreshingSla(true)
     try {
-      const res = await slaService.refreshSlaStatus()
+      const res = await slaService.runNow()
       await loadData()
       alert(
-        `SLA atualizado com sucesso! ${res.totalEvaluated} exames avaliados, ${res.nearWarningCount} próximos do vencimento, ${res.overdueCount} atrasados.`,
+        `Ciclo de SLA disparado e registrado! ${res.result.examsEvaluated} avaliados, ${res.result.examsUpdated} atualizados. Histórico gravado em sla_job_executions.`,
       )
     } catch (err: any) {
       alert(`Erro ao reavaliar SLA: ${err.message}`)
@@ -220,6 +223,63 @@ export default function AdminDashboard() {
                 {isRefreshingSla ? 'Reavaliando Prazos...' : 'Reavaliar Prazos no Servidor'}
               </span>
             </Button>
+          </div>
+
+          {/* Card de Telemetria do Agendador Periódico (cronAdd PocketBase - Etapa 5B) */}
+          <div className="p-4 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50/70 to-blue-50/70 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-indigo-700 animate-pulse" />
+                <span className="font-bold text-xs text-indigo-950 uppercase tracking-wider">
+                  Agendador NATIVO de SLA (PocketBase Cron:{' '}
+                  {slaJobTelemetry?.cronJob?.id || 'sla_monitor_5m'})
+                </span>
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] font-bold">
+                  Ativo ({slaJobTelemetry?.cronJob?.frequency || 'A cada 5 min'})
+                </Badge>
+              </div>
+              <div className="text-[11px] text-slate-600 font-mono">
+                Expressão: <code>{slaJobTelemetry?.cronJob?.schedule || '*/5 * * * *'}</code>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+              <div className="p-2.5 rounded-lg bg-white/80 border border-indigo-100 text-xs">
+                <span className="text-slate-500 block text-[11px]">Última Execução</span>
+                <span className="font-semibold text-slate-900 font-mono text-[11px]">
+                  {slaJobTelemetry?.latestExecution?.completedAt
+                    ? new Date(slaJobTelemetry.latestExecution.completedAt).toLocaleTimeString(
+                        'pt-BR',
+                      )
+                    : 'Aguardando ciclo'}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-white/80 border border-indigo-100 text-xs">
+                <span className="text-slate-500 block text-[11px]">Status / Duração</span>
+                <span className="font-semibold text-emerald-700 font-mono text-[11px]">
+                  {slaJobTelemetry?.latestExecution?.status || 'OK'} (
+                  {slaJobTelemetry?.latestExecution?.durationMs || 0}ms)
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-white/80 border border-indigo-100 text-xs">
+                <span className="text-slate-500 block text-[11px]">Exames Avaliados</span>
+                <span className="font-bold text-slate-900 text-sm">
+                  {slaJobTelemetry?.latestExecution?.examsEvaluated ?? exams.length}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-white/80 border border-indigo-100 text-xs">
+                <span className="text-slate-500 block text-[11px]">Notificações Emitidas</span>
+                <span className="font-bold text-indigo-700 text-sm">
+                  {slaJobTelemetry?.latestExecution?.notificationsCreated ?? 0}
+                </span>
+              </div>
+            </div>
+
+            {slaJobTelemetry?.latestExecution?.executionSummary && (
+              <p className="text-[11px] text-slate-600 font-mono bg-white/60 p-2 rounded border border-indigo-100">
+                {slaJobTelemetry.latestExecution.executionSummary}
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

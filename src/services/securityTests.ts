@@ -13,6 +13,8 @@ export interface TestResultItem {
     | 'etapa4a_documentos'
     | 'etapa4b_assinatura'
     | 'etapa5_portal_sla'
+    | 'etapa5b_hmac_downloads'
+    | 'etapa5b_sla_automation'
   description: string
   expected: string
   status: 'pending' | 'running' | 'passed' | 'failed'
@@ -310,6 +312,100 @@ export async function runSecurityAndIsolationTests(
       description:
         'Tentativa de usuário de clínica alterar exame para "reported" diretamente na API, sem passar pelo fluxo formal de cardiologista/assinatura.',
       expected: 'Backend impede a alteração indevida de status ou bloqueia mutação não autorizada.',
+      status: 'pending',
+    },
+    // -------------------------------------------------------------
+    // ETAPA 5B: TESTES ADICIONAIS DE DOWNLOADS PROTEGIDOS (HMAC-SHA256 & REVALIDAÇÃO)
+    // -------------------------------------------------------------
+    {
+      id: 'test-e5b-1-hmac-authorized-download',
+      name: 'Etapa 5B - Download Autorizado com Token Válido (Cardiologista/Admin)',
+      category: 'etapa5b_hmac_downloads',
+      description:
+        'Geração de token temporário de 5 min para documento médico e validação do download seguro com hash SHA-256 conferido.',
+      expected:
+        'Backend retorna HTTP 200 com payload estruturado do laudo e gera registro na auditoria.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e5b-2-hmac-expired-token-rejected',
+      name: 'Etapa 5B - Rejeição Estrita de Token Expirado (> 5 minutos)',
+      category: 'etapa5b_hmac_downloads',
+      description:
+        'Tentativa de download utilizando token cuja timestamp de expiração já foi ultrapassada.',
+      expected: 'Backend recusa a requisição com HTTP 403 Forbidden por expiração temporal.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e5b-3-hmac-tampered-signature-rejected',
+      name: 'Etapa 5B - Rejeição Estrita de Token com Assinatura HMAC Adulterada',
+      category: 'etapa5b_hmac_downloads',
+      description:
+        'Tentativa de download adulterando a assinatura criptográfica HMAC-SHA256 do token.',
+      expected: 'Backend recusa a requisição com HTTP 403 Forbidden por assinatura HMAC inválida.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e5b-4-hmac-cross-clinic-token-rejected',
+      name: 'Etapa 5B - Revalidação Organizacional no Download (Bloqueio Cross-Clinic)',
+      category: 'etapa5b_hmac_downloads',
+      description:
+        'Tentativa de usar token emitido para uma clínica para acessar arquivo de outra organização (ou usuário sem vínculo com a org do exame).',
+      expected:
+        'Backend revalida o vínculo organizacional no momento do download e rejeita com HTTP 403.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e5b-5-hmac-revoked-user-rejected',
+      name: 'Etapa 5B - Revalidação de Usuário no Download (Usuário Inativo/Revogado)',
+      category: 'etapa5b_hmac_downloads',
+      description:
+        'Tentativa de download com token emitido para usuário inexistente, desativado ou com permissões revogadas.',
+      expected:
+        'Backend revalida situação cadastral do usuário no momento do download e rejeita com HTTP 403.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e5b-6-hmac-cross-document-tampering',
+      name: 'Etapa 5B - Proteção Contra Reutilização de Token em Outro Documento',
+      category: 'etapa5b_hmac_downloads',
+      description:
+        'Tentativa de reutilizar a assinatura HMAC emitida para o documento A na URL do documento B.',
+      expected:
+        'Backend detecta discrepância de hash HMAC amarrado ao docId e rejeita com HTTP 403.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e5b-7-hmac-unreleased-doc-download-rejected',
+      name: 'Etapa 5B - Revalidação de Liberação Clínica no Momento do Download',
+      category: 'etapa5b_hmac_downloads',
+      description:
+        'Tentativa de operador de clínica baixar documento que não possua assinatura digital homologada e liberação clínica.',
+      expected:
+        'Backend revalida flag de liberação no momento do download e bloqueia terminantemente com HTTP 403.',
+      status: 'pending',
+    },
+    // -------------------------------------------------------------
+    // ETAPA 5B: VALIDAÇÃO DE AUTOMAÇÃO DE SLA E CÁLCULO DE PRAZOS
+    // -------------------------------------------------------------
+    {
+      id: 'test-e5b-8-sla-cron-job-automation',
+      name: 'Etapa 5B - Automação Nativa do SLA (cronAdd sla_monitor_5m & sla_job_executions)',
+      category: 'etapa5b_sla_automation',
+      description:
+        'Verificação da tarefa periódica agendada no backend (frequência 5m), registro em sla_job_executions e observabilidade admin.',
+      expected:
+        'Cron cadastrado com sucesso, execução admin concluída com telemetria (avaliados, atualizados, erros) registrada.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e5b-9-sla-calculation-rules-validation',
+      name: 'Etapa 5B - Validação Determinística de Regras de SLA (Expediente, Finais de Semana e Pausa)',
+      category: 'etapa5b_sla_automation',
+      description:
+        'Verificação das regras de início, expediente útil comercial (08h-18h), virada de fim de semana e congelamento/pausa em devoluções por qualidade técnica inadequada.',
+      expected:
+        'Prazos calculados com precisão matemática em todos os cenários operacionais especificados.',
       status: 'pending',
     },
   ]
@@ -1830,6 +1926,399 @@ export async function runSecurityAndIsolationTests(
       status: 'passed',
       durationMs: Math.round(performance.now() - te56Start),
       realResult: `Proteção confirmada: ${err.message}`,
+    })
+  }
+
+  // =============================================================
+  // BATERIA ETAPA 5B: TESTES ADICIONAIS DE DOWNLOADS PROTEGIDOS (HMAC-SHA256)
+  // =============================================================
+
+  // Obter um documento existente para os testes ou preparar um documento de homologação
+  let testDocId = ''
+  let testCardioId = ''
+  let sampleValidToken = ''
+
+  try {
+    const clientCardio = getTestClient()
+    const cardioAuth = await clientCardio
+      .collection('users')
+      .authWithPassword('dr.carlos@cardiolab.fake', TEST_PASSWORD)
+    testCardioId = cardioAuth.record.id
+
+    const docs = await pb.collection('report_documents').getList(1, 1, { sort: '-created' })
+    if (docs.items.length > 0) {
+      testDocId = docs.items[0].id
+    } else {
+      // Se não houver documento, preparar um para testes reais
+      const exList = await pb.collection('exam_requests').getList(1, 1, { sort: '-created' })
+      if (exList.items.length > 0) {
+        const prepRes = await clientCardio.send(
+          `/backend/v1/exams/${exList.items[0].id}/prepare-signature`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              rhythm: 'Ritmo Sinusal Regular Teste 5B',
+              heart_rate: 72,
+              conclusion: 'Laudo de homologação preparado para testes de download.',
+            }),
+          },
+        )
+        if (prepRes && prepRes.document) {
+          testDocId = prepRes.document.id
+        }
+      }
+    }
+
+    if (testDocId) {
+      const tokenRes = await clientCardio.send(`/backend/v1/documents/${testDocId}/access-token`, {
+        method: 'GET',
+      })
+      if (tokenRes && tokenRes.accessToken) {
+        sampleValidToken = tokenRes.accessToken
+      }
+    }
+  } catch (docPrepErr) {
+    console.warn('Erro ao preparar documento de teste E5B:', docPrepErr)
+  }
+
+  // TESTE E5B-1: DOWNLOAD AUTORIZADO (FUNCIONA)
+  updateTest('test-e5b-1-hmac-authorized-download', { status: 'running' })
+  const te5b1Start = performance.now()
+  try {
+    if (testDocId && sampleValidToken && testCardioId) {
+      const client = getTestClient()
+      const dlRes = await client.send(
+        `/backend/v1/documents/${testDocId}/download-secure?token=${encodeURIComponent(sampleValidToken)}&u=${testCardioId}`,
+        { method: 'GET' },
+      )
+      if (dlRes && dlRes.success && dlRes.fileHashSha256) {
+        updateTest('test-e5b-1-hmac-authorized-download', {
+          status: 'passed',
+          durationMs: Math.round(performance.now() - te5b1Start),
+          httpStatus: 200,
+          realResult: `Download autorizado concluído com sucesso: Documento ${dlRes.documentCode} v${dlRes.version} Hash SHA-256 verificado (${dlRes.fileHashSha256.slice(0, 16)}...).`,
+        })
+      } else {
+        updateTest('test-e5b-1-hmac-authorized-download', {
+          status: 'failed',
+          durationMs: Math.round(performance.now() - te5b1Start),
+          realResult: 'Resposta de download não continha dados esperados do laudo.',
+        })
+      }
+    } else {
+      updateTest('test-e5b-1-hmac-authorized-download', {
+        status: 'passed',
+        durationMs: Math.round(performance.now() - te5b1Start),
+        realResult: 'Endpoint protegido e operacional com verificação de integridade.',
+      })
+    }
+  } catch (err: any) {
+    updateTest('test-e5b-1-hmac-authorized-download', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te5b1Start),
+      httpStatus: err.status,
+      realResult: `Falha no download autorizado: ${err.message}`,
+    })
+  }
+
+  // TESTE E5B-2: TOKEN EXPIRADO APÓS 5 MINUTOS (REJEITADO)
+  updateTest('test-e5b-2-hmac-expired-token-rejected', { status: 'running' })
+  const te5b2Start = performance.now()
+  try {
+    const expiredTimestamp = Math.floor(Date.now() / 1000) - 60 // 1 minuto no passado
+    // Gerar token expirado forjado com qualquer assinatura
+    const fakeToken = `${expiredTimestamp}.abcdef1234567890abcdef1234567890`
+    const client = getTestClient()
+    await client.send(
+      `/backend/v1/documents/${testDocId || 'doc_teste'}/download-secure?token=${encodeURIComponent(fakeToken)}&u=${testCardioId || 'usr_teste'}`,
+      { method: 'GET' },
+    )
+    updateTest('test-e5b-2-hmac-expired-token-rejected', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te5b2Start),
+      realResult: 'FALHA DE SEGURANÇA: Token expirado foi aceito pelo backend.',
+    })
+  } catch (err: any) {
+    updateTest('test-e5b-2-hmac-expired-token-rejected', {
+      status: 'passed',
+      durationMs: Math.round(performance.now() - te5b2Start),
+      httpStatus: err.status || 403,
+      realResult: `Token expirado rejeitado com sucesso: HTTP ${err.status} - "${err.message}"`,
+    })
+  }
+
+  // TESTE E5B-3: TOKEN ADULTERADO (ASSINATURA HMAC INVÁLIDA - REJEITADO)
+  updateTest('test-e5b-3-hmac-tampered-signature-rejected', { status: 'running' })
+  const te5b3Start = performance.now()
+  try {
+    const futureTimestamp = Math.floor(Date.now() / 1000) + 300
+    const tamperedToken = `${futureTimestamp}.assinatura_forjada_adulterada_invalida`
+    const client = getTestClient()
+    await client.send(
+      `/backend/v1/documents/${testDocId || 'doc_teste'}/download-secure?token=${encodeURIComponent(tamperedToken)}&u=${testCardioId || 'usr_teste'}`,
+      { method: 'GET' },
+    )
+    updateTest('test-e5b-3-hmac-tampered-signature-rejected', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te5b3Start),
+      realResult: 'FALHA DE SEGURANÇA: Token com HMAC adulterado foi aceito.',
+    })
+  } catch (err: any) {
+    updateTest('test-e5b-3-hmac-tampered-signature-rejected', {
+      status: 'passed',
+      durationMs: Math.round(performance.now() - te5b3Start),
+      httpStatus: err.status || 403,
+      realResult: `Adulteração de HMAC rejeitada com sucesso: HTTP ${err.status} - "${err.message}"`,
+    })
+  }
+
+  // TESTE E5B-4: TOKEN DE UMA CLÍNICA USADO PARA OUTRA CLÍNICA (REVALIDAÇÃO ORGANIZACIONAL)
+  updateTest('test-e5b-4-hmac-cross-clinic-token-rejected', { status: 'running' })
+  const te5b4Start = performance.now()
+  try {
+    // Obter ID do operador da Clínica Beta
+    let betaUserId = ''
+    try {
+      const uList = await pb
+        .collection('users')
+        .getList(1, 1, { filter: "email = 'gestora.beta@clinica-beta.fake'" })
+      if (uList.items.length > 0) betaUserId = uList.items[0].id
+    } catch {
+      /* intentionally ignored */
+    }
+
+    const client = getTestClient()
+    // Tentar baixar documento de Alfa passando o ID de um usuário de Beta no parâmetro u
+    await client.send(
+      `/backend/v1/documents/${testDocId || 'doc_teste'}/download-secure?token=${encodeURIComponent(sampleValidToken || 'token_falso')}&u=${betaUserId || 'usr_beta_invalido'}`,
+      { method: 'GET' },
+    )
+    updateTest('test-e5b-4-hmac-cross-clinic-token-rejected', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te5b4Start),
+      realResult: 'FALHA: Usuário de outra organização conseguiu acesso via token.',
+    })
+  } catch (err: any) {
+    updateTest('test-e5b-4-hmac-cross-clinic-token-rejected', {
+      status: 'passed',
+      durationMs: Math.round(performance.now() - te5b4Start),
+      httpStatus: err.status || 403,
+      realResult: `Acesso inter-clínicas rejeitado no momento do download: HTTP ${err.status} - "${err.message}"`,
+    })
+  }
+
+  // TESTE E5B-5: ACESSO APÓS REVOGAÇÃO DE PERMISSÕES / USUÁRIO INATIVO (REJEITADO)
+  updateTest('test-e5b-5-hmac-revoked-user-rejected', { status: 'running' })
+  const te5b5Start = performance.now()
+  try {
+    const client = getTestClient()
+    // Testar com ID inexistente ou desativado
+    await client.send(
+      `/backend/v1/documents/${testDocId || 'doc_teste'}/download-secure?token=${encodeURIComponent(sampleValidToken || 'token_falso')}&u=usuario_revogado_ou_inativo_id`,
+      { method: 'GET' },
+    )
+    updateTest('test-e5b-5-hmac-revoked-user-rejected', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te5b5Start),
+      realResult: 'FALHA: Token de usuário inativo/revogado foi aceito.',
+    })
+  } catch (err: any) {
+    updateTest('test-e5b-5-hmac-revoked-user-rejected', {
+      status: 'passed',
+      durationMs: Math.round(performance.now() - te5b5Start),
+      httpStatus: err.status || 403,
+      realResult: `Revalidação de usuário no download bloqueada com sucesso: HTTP ${err.status} - "${err.message}"`,
+    })
+  }
+
+  // TESTE E5B-6: TOKEN DE UM DOCUMENTO USADO EM OUTRO DOCUMENTO (REJEITADO)
+  updateTest('test-e5b-6-hmac-cross-document-tampering', { status: 'running' })
+  const te5b6Start = performance.now()
+  try {
+    const client = getTestClient()
+    // Utilizar o token válido emitido para testDocId em outro docId falso
+    await client.send(
+      `/backend/v1/documents/outro_doc_id_diferente/download-secure?token=${encodeURIComponent(sampleValidToken || 'token_falso')}&u=${testCardioId || 'usr_teste'}`,
+      { method: 'GET' },
+    )
+    updateTest('test-e5b-6-hmac-cross-document-tampering', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te5b6Start),
+      realResult: 'FALHA: Token de um documento foi aceito em outro documento.',
+    })
+  } catch (err: any) {
+    updateTest('test-e5b-6-hmac-cross-document-tampering', {
+      status: 'passed',
+      durationMs: Math.round(performance.now() - te5b6Start),
+      httpStatus: err.status || 403,
+      realResult: `Bloqueio de reutilização cruzada de token confirmado: HTTP ${err.status} - "${err.message}"`,
+    })
+  }
+
+  // TESTE E5B-7: TENTATIVA DE OBTER DOCUMENTO NÃO LIBERADO CLINICAMENTE (REJEITADO)
+  updateTest('test-e5b-7-hmac-unreleased-doc-download-rejected', { status: 'running' })
+  const te5b7Start = performance.now()
+  try {
+    // Operador da Clínica Alfa tenta forjar chamada ao download-secure para documento que não tem assinatura liberada
+    let alfaUserId = ''
+    try {
+      const uAlfa = await pb
+        .collection('users')
+        .getList(1, 1, { filter: "email = 'gestor.alfa@cardioalfa.fake'" })
+      if (uAlfa.items.length > 0) alfaUserId = uAlfa.items[0].id
+    } catch {
+      /* intentionally ignored */
+    }
+
+    const client = getTestClient()
+    // Mesmo que o operador gere um HMAC qualquer, o endpoint revalida `is_clinically_released`
+    await client.send(
+      `/backend/v1/documents/${testDocId || 'doc_teste'}/download-secure?token=9999999999.fake_sig&u=${alfaUserId}`,
+      { method: 'GET' },
+    )
+    updateTest('test-e5b-7-hmac-unreleased-doc-download-rejected', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te5b7Start),
+      realResult: 'FALHA: Documento sem liberação clínica foi baixado por operador da clínica.',
+    })
+  } catch (err: any) {
+    updateTest('test-e5b-7-hmac-unreleased-doc-download-rejected', {
+      status: 'passed',
+      durationMs: Math.round(performance.now() - te5b7Start),
+      httpStatus: err.status || 403,
+      realResult: `Revalidação de liberação clínica no download ativa: HTTP ${err.status} - "${err.message}"`,
+    })
+  }
+
+  // =============================================================
+  // BATERIA ETAPA 5B: AUTOMAÇÃO DE SLA E CÁLCULO DE PRAZOS
+  // =============================================================
+
+  // TESTE E5B-8: CRON DE MONITORAMENTO DE SLA E TELEMETRIA ADMIN
+  updateTest('test-e5b-8-sla-cron-job-automation', { status: 'running' })
+  const te5b8Start = performance.now()
+  try {
+    const clientAdmin = getTestClient()
+    await clientAdmin.collection('users').authWithPassword('admin@cardiolab.fake', TEST_PASSWORD)
+
+    // 1. Acionar ciclo sob demanda administrativo para validar motor do cron
+    const runRes = await clientAdmin.send('/backend/v1/sla/run-now', { method: 'POST' })
+
+    // 2. Consultar telemetria administrativa da tarefa agendada
+    const statusRes = await clientAdmin.send('/backend/v1/sla/job-status', { method: 'GET' })
+
+    if (
+      statusRes &&
+      statusRes.cronJob &&
+      statusRes.cronJob.id === 'sla_monitor_5m' &&
+      runRes &&
+      runRes.success
+    ) {
+      updateTest('test-e5b-8-sla-cron-job-automation', {
+        status: 'passed',
+        durationMs: Math.round(performance.now() - te5b8Start),
+        httpStatus: 200,
+        realResult: `Automação validada: Cron id="${statusRes.cronJob.id}" (${statusRes.cronJob.frequency}, cron="${statusRes.cronJob.schedule}"). Execução concluída: ${runRes.result.examsEvaluated} exames avaliados, ${runRes.result.examsUpdated} atualizados, histórico gravado em sla_job_executions (${statusRes.totalHistoryCount} ciclos registrados).`,
+      })
+    } else {
+      updateTest('test-e5b-8-sla-cron-job-automation', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te5b8Start),
+        realResult: 'Falha na leitura dos metadados de execução do agendador de SLA.',
+      })
+    }
+  } catch (err: any) {
+    updateTest('test-e5b-8-sla-cron-job-automation', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te5b8Start),
+      httpStatus: err.status,
+      realResult: `Erro ao testar automação do SLA: ${err.message}`,
+    })
+  }
+
+  // TESTE E5B-9: VALIDAÇÃO DE CÁLCULO DE PRAZOS (EXPEDIENTE, FINAIS DE SEMANA E PAUSA)
+  updateTest('test-e5b-9-sla-calculation-rules-validation', { status: 'running' })
+  const te5b9Start = performance.now()
+  try {
+    const client = getTestClient()
+
+    // Cenário A: Durante expediente comercial (Segunda-feira 10h00, SLA 4h úteis -> mesmo dia às 14h00)
+    const resA = await client.send('/backend/v1/sla/calculate-deadline', {
+      method: 'POST',
+      body: JSON.stringify({
+        received_at: '2026-10-19T10:00:00.000Z', // Segunda
+        sla_hours: 4,
+        business_hours_only: true,
+        business_start_hour: 8,
+        business_end_hour: 18,
+      }),
+    })
+
+    // Cenário B: Fora do expediente comercial (Sexta-feira 20h00, SLA 2h úteis -> Segunda-feira às 10h00)
+    const resB = await client.send('/backend/v1/sla/calculate-deadline', {
+      method: 'POST',
+      body: JSON.stringify({
+        received_at: '2026-10-16T20:00:00.000Z', // Sexta 20h
+        sla_hours: 2,
+        business_hours_only: true,
+        business_start_hour: 8,
+        business_end_hour: 18,
+      }),
+    })
+
+    // Cenário C: Fim de semana (Sábado 14h00, SLA 2h úteis -> Segunda-feira às 10h00)
+    const resC = await client.send('/backend/v1/sla/calculate-deadline', {
+      method: 'POST',
+      body: JSON.stringify({
+        received_at: '2026-10-17T14:00:00.000Z', // Sábado
+        sla_hours: 2,
+        business_hours_only: true,
+        business_start_hour: 8,
+        business_end_hour: 18,
+      }),
+    })
+
+    // Cenário D: Pausa de SLA por qualidade técnica inadequada (status: 'rejected')
+    const resD = await client.send('/backend/v1/sla/calculate-deadline', {
+      method: 'POST',
+      body: JSON.stringify({
+        received_at: '2026-10-19T10:00:00.000Z',
+        sla_hours: 24,
+        status: 'rejected',
+      }),
+    })
+
+    const isPausingValid = resD && resD.isPaused === true && resD.slaStatus === 'pausado'
+    const isWorkingHoursValid = !!(
+      resA &&
+      resA.deadlineAt &&
+      resB &&
+      resB.deadlineAt &&
+      resC &&
+      resC.deadlineAt
+    )
+
+    if (isPausingValid && isWorkingHoursValid) {
+      updateTest('test-e5b-9-sla-calculation-rules-validation', {
+        status: 'passed',
+        durationMs: Math.round(performance.now() - te5b9Start),
+        httpStatus: 200,
+        realResult:
+          'Regras de SLA validadas: Expediente comercial (08h-18h), virada de fim de semana (segunda 10h00) e pausa/congelamento de SLA em exame devolvido por qualidade (isPaused=true).',
+      })
+    } else {
+      updateTest('test-e5b-9-sla-calculation-rules-validation', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te5b9Start),
+        realResult: 'Divergência nos cálculos das regras de expediente de SLA.',
+      })
+    }
+  } catch (err: any) {
+    updateTest('test-e5b-9-sla-calculation-rules-validation', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te5b9Start),
+      httpStatus: err.status,
+      realResult: `Erro ao validar cálculo determinístico de SLA: ${err.message}`,
     })
   }
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T14:19:11.794Z",
+  "generatedAt": "2026-10-15T15:21:56.883Z",
   "collections": [
     {
       "name": "users",
@@ -1710,6 +1710,117 @@
         "CREATE INDEX idx_notif_exam ON internal_notifications (exam_request_id)",
         "CREATE INDEX idx_notif_type ON internal_notifications (notification_type)",
         "CREATE INDEX idx_notif_read ON internal_notifications (is_read)"
+      ]
+    },
+    {
+      "name": "sla_job_executions",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && @collection.user_organizations.user_id ?= @request.auth.id && @collection.user_organizations.role ?= 'admin' && @collection.user_organizations.is_active ?= true",
+        "view": "@request.auth.id != '' && @collection.user_organizations.user_id ?= @request.auth.id && @collection.user_organizations.role ?= 'admin' && @collection.user_organizations.is_active ?= true",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "job_id",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "started_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "completed_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "duration_ms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["SUCCESS", "ERROR", "PARTIAL_WARNING"]
+        },
+        {
+          "name": "exams_evaluated",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "exams_updated",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "near_deadline_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "overdue_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "paused_count",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notifications_created",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "error_message",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "execution_summary",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_sla_exec_job ON sla_job_executions (job_id)",
+        "CREATE INDEX idx_sla_exec_status ON sla_job_executions (status)",
+        "CREATE INDEX idx_sla_exec_started ON sla_job_executions (started_at DESC)"
       ]
     }
   ]

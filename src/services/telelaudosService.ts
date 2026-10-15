@@ -424,6 +424,35 @@ export const slaService = {
       method: 'POST',
     })
   },
+
+  // Obter status e histórico da tarefa agendada (cron) de SLA
+  async getJobStatus(): Promise<any> {
+    return await pb.send('/backend/v1/sla/job-status', {
+      method: 'GET',
+    })
+  },
+
+  // Executar ciclo de SLA sob demanda e registrar em sla_job_executions
+  async runNow(): Promise<any> {
+    return await pb.send('/backend/v1/sla/run-now', {
+      method: 'POST',
+    })
+  },
+
+  // Testar cálculo de deadline
+  async calculateDeadline(params: {
+    received_at: string
+    sla_hours: number
+    business_hours_only?: boolean
+    business_start_hour?: number
+    business_end_hour?: number
+    status?: string
+  }): Promise<any> {
+    return await pb.send('/backend/v1/sla/calculate-deadline', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+  },
 }
 
 export const notificationService = {

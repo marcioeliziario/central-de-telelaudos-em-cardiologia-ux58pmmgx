@@ -2440,7 +2440,12 @@ routerAdd('GET', '/backend/v1/documents/{id}/access-token', (e) => {
   }
 
   const docId = e.request.pathValue('id')
-  const doc = $app.findRecordById('report_documents', docId)
+  let doc = null
+  try {
+    doc = $app.findRecordById('report_documents', docId)
+  } catch (_) {
+    throw new NotFoundError('Documento médico não localizado.')
+  }
   if (!doc) {
     throw new NotFoundError('Documento médico não localizado.')
   }
@@ -2527,9 +2532,16 @@ routerAdd('GET', '/backend/v1/documents/{id}/access-token', (e) => {
 })
 
 // 15. Download do Laudo com Token Temporário Protegido e Auditoria
+// Revalidação em tempo de execução: o HMAC sozinho NÃO basta.
+// Deve checar: usuário ativo, vínculo com a organização do exame ativo, e situação de liberação clínica do laudo.
 routerAdd('GET', '/backend/v1/documents/{id}/download-secure', (e) => {
   const docId = e.request.pathValue('id')
-  const doc = $app.findRecordById('report_documents', docId)
+  let doc = null
+  try {
+    doc = $app.findRecordById('report_documents', docId)
+  } catch (_) {
+    throw new NotFoundError('Documento médico não localizado.')
+  }
   if (!doc) {
     throw new NotFoundError('Documento médico não localizado.')
   }
@@ -2556,25 +2568,86 @@ routerAdd('GET', '/backend/v1/documents/{id}/download-secure', (e) => {
   const tokenSecret = $os.getenv('APP_ACCESS_SECRET') || 'telelaudos-report-access-salt-2026'
   const expectedSig = $security.hs256(`${doc.id}:${userId}:${expTimestamp}`, tokenSecret)
   if (signature !== expectedSig) {
-    throw new ForbiddenError('Assinatura do token de acesso inválida.')
+    throw new ForbiddenError('Assinatura HMAC do token inválida ou adulterada.')
   }
 
-  const examId = doc.getString('exam_request_id')
-  const exam = $app.findRecordById('exam_requests', examId)
+  // REVALIDAÇÃO ESTRITA NO MOMENTO DO DOWNLOAD (REQUISITO MANDATÓRIO)
+  // 1. Verificar se o usuário existe e está ativo no sistema
+  let userRecord = null
+  try {
+    userRecord = $app.findRecordById('users', userId)
+  } catch (_) {
+    throw new ForbiddenError('Usuário titular do token não localizado no sistema.')
+  }
+  if (!userRecord || !userRecord.getBool('is_active')) {
+    throw new ForbiddenError('Usuário inativo ou com acesso revogado.')
+  }
 
-  // Auditoria obrigatória do download realizado via token
+  // 2. Localizar exame associado ao documento
+  const examId = doc.getString('exam_request_id')
+  let exam = null
+  try {
+    exam = $app.findRecordById('exam_requests', examId)
+  } catch (_) {
+    throw new NotFoundError('Exame associado ao documento não localizado.')
+  }
+
+  const examOrgId = exam.getString('organization_id')
+
+  // 3. Revalidar vínculo ativo e papel do usuário com a organização
+  const activeUserOrgs = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${userId}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+
+  const isCardioOrAdmin = activeUserOrgs.some(
+    (uo) => uo.getString('role') === 'cardiologist' || uo.getString('role') === 'admin',
+  )
+  const isMemberOfExamOrg = activeUserOrgs.some(
+    (uo) => uo.getString('organization_id') === examOrgId,
+  )
+
+  if (!isCardioOrAdmin && !isMemberOfExamOrg) {
+    throw new ForbiddenError(
+      'Acesso negado: permissões do usuário foram revogadas ou não possui vínculo com a organização proprietária do documento.',
+    )
+  }
+
+  // 4. Revalidar situação de liberação clínica do documento (assinatura digital válida)
+  let isReleased = false
+  try {
+    const sigs = $app.findRecordsByFilter(
+      'report_signatures',
+      `report_document_id = '${doc.id}' && signature_status = 'VALIDADA' && is_clinically_released = true`,
+      '',
+      1,
+      0,
+    )
+    if (sigs.length > 0) isReleased = true
+  } catch (_) {}
+
+  if (!isCardioOrAdmin && !isReleased) {
+    throw new ForbiddenError(
+      'Este laudo não possui assinatura digital válida e liberação clínica homologada. O download permanece estritamente bloqueado.',
+    )
+  }
+
+  // 5. Auditoria obrigatória do download realizado via token revalidado
   try {
     const auditCol = $app.findCollectionByNameOrId('audit_logs')
     const auditRec = new Record(auditCol)
     auditRec.set('user_id', userId)
-    auditRec.set('organization_id', exam.getString('organization_id'))
+    auditRec.set('organization_id', examOrgId)
     auditRec.set('action', 'REPORT_PDF_DOWNLOAD_SECURE')
     auditRec.set('target_collection', 'report_documents')
     auditRec.set('target_id', doc.id)
     auditRec.set('status', 'SUCCESS')
     auditRec.set(
       'details',
-      `Download efetuado via token temporário seguro. Documento: ${doc.getString('document_code')} v${doc.getInt('version')} SHA-256: ${doc.getString('file_hash_sha256')}`,
+      `Download efetuado via token temporário HMAC validado. Documento: ${doc.getString('document_code')} v${doc.getInt('version')} SHA-256: ${doc.getString('file_hash_sha256')}`,
     )
     $app.save(auditRec)
   } catch (err) {
@@ -3047,18 +3120,20 @@ onRecordAuthRequest((e) => {
   try {
     const authRecord = e.record
     if (authRecord) {
+      const userId = authRecord.id || (authRecord.get ? authRecord.get('id') : '')
+      let validUser = null
+      try {
+        if (userId) validUser = $app.findRecordById('users', userId)
+      } catch (_) {}
+
       const auditCol = $app.findCollectionByNameOrId('audit_logs')
       const auditRec = new Record(auditCol)
-
-      // Em PocketBase, user_id é uma relation obrigatória com users.
-      // e.record é o authRecord autenticado.
-      const userId = authRecord.id || (authRecord.get ? authRecord.get('id') : '')
-      if (userId) {
-        auditRec.set('user_id', userId)
+      if (validUser) {
+        auditRec.set('user_id', validUser.id)
       }
       auditRec.set('action', 'AUTH_LOGIN')
       auditRec.set('target_collection', 'users')
-      auditRec.set('target_id', userId)
+      auditRec.set('target_id', userId || '')
       auditRec.set('status', 'SUCCESS')
       const email = authRecord.getString ? authRecord.getString('email') : ''
       auditRec.set('details', `Login realizado: ${email || userId}`)

@@ -8,6 +8,7 @@ import {
   examService,
   patientService,
   auditService,
+  slaService,
 } from '@/services/telelaudosService'
 import {
   Organization,
@@ -44,8 +45,10 @@ import {
   Clock,
   AlertTriangle,
   Activity,
+  RotateCcw,
 } from 'lucide-react'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
+import NotificationsPopover from '@/components/NotificationsPopover'
 
 export default function AdminDashboard() {
   const { user } = useAuth()
@@ -57,6 +60,8 @@ export default function AdminDashboard() {
   const [exams, setExams] = useState<ExamRequest[]>([])
   const [patients, setPatients] = useState<Patient[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [contractSlas, setContractSlas] = useState<any[]>([])
+  const [isRefreshingSla, setIsRefreshingSla] = useState(false)
   const [loading, setLoading] = useState(true)
 
   // Estados de formulários simples para criar clínica/unidade/médico
@@ -69,7 +74,7 @@ export default function AdminDashboard() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const [orgs, unts, docs, uos, exms, pts, logs] = await Promise.all([
+      const [orgs, unts, docs, uos, exms, pts, logs, slas] = await Promise.all([
         organizationService.getAll().catch(() => []),
         unitService.getAll().catch(() => []),
         doctorService.getAll().catch(() => []),
@@ -77,6 +82,7 @@ export default function AdminDashboard() {
         examService.getAll().catch(() => []),
         patientService.getAll().catch(() => []),
         auditService.getRecent(30).catch(() => []),
+        slaService.getAll().catch(() => []),
       ])
       setOrganizations(orgs)
       setUnits(unts)
@@ -85,8 +91,24 @@ export default function AdminDashboard() {
       setExams(exms)
       setPatients(pts)
       setAuditLogs(logs)
+      setContractSlas(slas)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleRefreshSla = async () => {
+    setIsRefreshingSla(true)
+    try {
+      const res = await slaService.refreshSlaStatus()
+      await loadData()
+      alert(
+        `SLA atualizado com sucesso! ${res.totalEvaluated} exames avaliados, ${res.nearWarningCount} próximos do vencimento, ${res.overdueCount} atrasados.`,
+      )
+    } catch (err: any) {
+      alert(`Erro ao reavaliar SLA: ${err.message}`)
+    } finally {
+      setIsRefreshingSla(false)
     }
   }
 
@@ -135,20 +157,24 @@ export default function AdminDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          <NotificationsPopover role="admin" />
           <Badge
             variant="outline"
-            className="bg-amber-50 text-amber-900 border-amber-300 py-1 text-xs"
+            className="bg-emerald-50 text-emerald-900 border-emerald-300 py-1 text-xs"
           >
-            Etapa 1 — Fundação & RLS Ativos
+            Etapa 5 — SLA & Notificações Ativos
           </Badge>
         </div>
       </div>
 
       {/* Tabs de Navegação do Administrador */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-3 sm:grid-cols-7 w-full h-auto p-1 bg-slate-200/80 gap-1 text-xs">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-8 w-full h-auto p-1 bg-slate-200/80 gap-1 text-xs">
           <TabsTrigger value="overview" className="py-2">
             Geral
+          </TabsTrigger>
+          <TabsTrigger value="sla" className="py-2 font-bold text-[#0E4C92]">
+            Contratos SLA
           </TabsTrigger>
           <TabsTrigger value="clinics" className="py-2">
             Clínicas
@@ -163,12 +189,135 @@ export default function AdminDashboard() {
             Usuários
           </TabsTrigger>
           <TabsTrigger value="exams" className="py-2">
-            Exames
+            Exames ({exams.length})
           </TabsTrigger>
           <TabsTrigger value="audit" className="py-2">
             Auditoria
           </TabsTrigger>
         </TabsList>
+
+        {/* TAB DE CONTRATOS & CONTROLE DE PRAZOS (SLA) */}
+        <TabsContent value="sla" className="space-y-4 pt-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-[#0E4C92]" />
+                <span>Gestão de Contratos de SLA & Controle de Prazos</span>
+              </h2>
+              <p className="text-xs text-slate-600">
+                Prazos configuráveis por contrato e prioridade. Parâmetros homologados: Rotina: 24h
+                • Prioritário: 2h.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleRefreshSla}
+              disabled={isRefreshingSla}
+              className="bg-[#0E4C92] hover:bg-[#0c3e77] text-white text-xs gap-1.5 h-8"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isRefreshingSla ? 'animate-spin' : ''}`} />
+              <span>
+                {isRefreshingSla ? 'Reavaliando Prazos...' : 'Reavaliar Prazos no Servidor'}
+              </span>
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Card className="p-3.5 bg-white border-slate-200 shadow-sm">
+              <span className="text-xs font-semibold text-slate-500">Exames no Prazo</span>
+              <div className="text-2xl font-bold text-emerald-600 mt-1">
+                {
+                  exams.filter(
+                    (e) =>
+                      e.sla_status === 'no_prazo' || (!e.sla_status && e.status !== 'reported'),
+                  ).length
+                }
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Dentro do prazo contratual</div>
+            </Card>
+
+            <Card className="p-3.5 bg-white border-slate-200 shadow-sm">
+              <span className="text-xs font-semibold text-slate-500">Próximos do Vencimento</span>
+              <div className="text-2xl font-bold text-amber-600 mt-1">
+                {exams.filter((e) => e.sla_status === 'proximo_do_vencimento').length}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Menos de 30 min para expirar</div>
+            </Card>
+
+            <Card className="p-3.5 bg-white border-slate-200 shadow-sm">
+              <span className="text-xs font-semibold text-slate-500">Exames Atrasados</span>
+              <div className="text-2xl font-bold text-red-600 mt-1">
+                {exams.filter((e) => e.sla_status === 'atrasado').length}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">Prazo contratual estourado</div>
+            </Card>
+          </div>
+
+          <Card className="border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-700 font-semibold">
+                  <tr>
+                    <th className="p-3">Contrato / Clínica</th>
+                    <th className="p-3">Prazo Rotina</th>
+                    <th className="p-3">Prazo Prioritário</th>
+                    <th className="p-3">Emergência com Prazo Garantido</th>
+                    <th className="p-3">Horário de Atendimento</th>
+                    <th className="p-3">Alerta de Proximidade</th>
+                    <th className="p-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {contractSlas.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-6 text-center text-slate-400">
+                        Nenhum contrato cadastrado.
+                      </td>
+                    </tr>
+                  ) : (
+                    contractSlas.map((sla) => (
+                      <tr key={sla.id} className="hover:bg-slate-50/50">
+                        <td className="p-3">
+                          <div className="font-semibold text-slate-900">{sla.contract_name}</div>
+                          <div className="text-[11px] text-slate-500">
+                            {sla.expand?.organization_id?.name}
+                          </div>
+                        </td>
+                        <td className="p-3 font-mono font-bold text-slate-800">
+                          {sla.routine_sla_hours} horas
+                        </td>
+                        <td className="p-3 font-mono font-bold text-amber-700">
+                          {sla.urgent_sla_hours} horas
+                        </td>
+                        <td className="p-3">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] text-slate-500 bg-slate-50 border-slate-300"
+                          >
+                            Desabilitada (Etapa 5)
+                          </Badge>
+                        </td>
+                        <td className="p-3 text-slate-600">
+                          {sla.business_hours_start || '08:00'} às{' '}
+                          {sla.business_hours_end || '18:00'}
+                          {sla.operates_on_weekends ? ' (Sáb/Dom)' : ' (Seg-Sex)'}
+                        </td>
+                        <td className="p-3 text-slate-600 font-mono">
+                          {sla.warning_threshold_minutes || 30} min antes
+                        </td>
+                        <td className="p-3">
+                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-[10px]">
+                            Ativo
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </TabsContent>
 
         {/* 1. VISÃO GERAL */}
         <TabsContent value="overview" className="space-y-6 pt-4">
@@ -491,7 +640,7 @@ export default function AdminDashboard() {
                     <th className="p-3">Data</th>
                     <th className="p-3">Paciente</th>
                     <th className="p-3">Clínica Solicitante</th>
-                    <th className="p-3">Urgência</th>
+                    <th className="p-3">Urgência & Prazo SLA</th>
                     <th className="p-3">Status</th>
                   </tr>
                 </thead>
@@ -499,8 +648,7 @@ export default function AdminDashboard() {
                   {exams.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="p-6 text-center text-slate-400">
-                        Nenhum exame enviado ainda. Alterne para o perfil de clínica para enviar
-                        solicitações de ECG.
+                        Nenhum exame enviado ainda.
                       </td>
                     </tr>
                   ) : (
@@ -515,17 +663,27 @@ export default function AdminDashboard() {
                         <td className="p-3 text-slate-700">
                           {ex.expand?.organization_id?.name || '—'}
                         </td>
-                        <td className="p-3">
+                        <td className="p-3 space-y-1">
                           <Badge
                             variant="outline"
                             className={
-                              ex.urgency === 'emergency'
-                                ? 'bg-red-50 text-red-700 border-red-300'
+                              ex.urgency === 'urgent'
+                                ? 'bg-amber-50 text-amber-800 border-amber-300'
                                 : 'bg-slate-50'
                             }
                           >
-                            {ex.urgency}
+                            {ex.urgency === 'urgent' ? 'Prioritário (2h)' : 'Rotina (24h)'}
                           </Badge>
+                          {ex.sla_status === 'atrasado' && (
+                            <Badge className="bg-red-600 text-white text-[10px] ml-1">
+                              Atrasado
+                            </Badge>
+                          )}
+                          {ex.sla_status === 'proximo_do_vencimento' && (
+                            <Badge className="bg-amber-500 text-white text-[10px] ml-1">
+                              Vence em breve
+                            </Badge>
+                          )}
                         </td>
                         <td className="p-3">
                           <Badge variant="secondary">{ex.status}</Badge>

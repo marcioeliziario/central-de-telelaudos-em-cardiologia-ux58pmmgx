@@ -160,6 +160,25 @@ routerAdd('POST', '/backend/v1/exams/{id}/return', (e) => {
     updatedExam = exam
   })
 
+  // Notificação interna automática para a clínica solicitante (EXAME_DEVOLVIDO_QUALIDADE)
+  try {
+    const notifCol = $app.findCollectionByNameOrId('internal_notifications')
+    const notif = new Record(notifCol)
+    notif.set('organization_id', updatedExam.getString('organization_id'))
+    notif.set('exam_request_id', examId)
+    notif.set('notification_type', 'EXAME_DEVOLVIDO_QUALIDADE')
+    notif.set('title', 'Exame devolvido por apontamento técnico')
+    notif.set(
+      'message',
+      `O ECG protocolo ${examId.slice(-6).toUpperCase()} necessita de ajuste ou novo traçado pela clínica. Motivo: ${reason.trim()}`,
+    )
+    notif.set('target_role', 'clinic_manager')
+    notif.set('is_read', false)
+    $app.save(notif)
+  } catch (notifErr) {
+    console.log('Falha notif return:', notifErr)
+  }
+
   try {
     const auditCol = $app.findCollectionByNameOrId('audit_logs')
     const auditRec = new Record(auditCol)
@@ -2410,6 +2429,307 @@ routerAdd('POST', '/backend/v1/signatures/validate-and-release', (e) => {
 })
 
 // -------------------------------------------------------------
+// ROTAS DA ETAPA 5: PORTAL DE RESULTADOS, NOTIFICAÇÕES & CONTROLE DE PRAZOS
+// -------------------------------------------------------------
+
+// 14. Geração de Token Temporário e Download Seguro de Laudo Liberado
+routerAdd('GET', '/backend/v1/documents/{id}/access-token', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const docId = e.request.pathValue('id')
+  const doc = $app.findRecordById('report_documents', docId)
+  if (!doc) {
+    throw new NotFoundError('Documento médico não localizado.')
+  }
+
+  const examId = doc.getString('exam_request_id')
+  const exam = $app.findRecordById('exam_requests', examId)
+
+  const userOrgs = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isCardioOrAdmin = userOrgs.some(
+    (uo) => uo.get('role') === 'cardiologist' || uo.get('role') === 'admin',
+  )
+  const isMemberOfExamOrg = userOrgs.some(
+    (uo) => uo.get('organization_id') === exam.getString('organization_id'),
+  )
+
+  // O backend confere estritamente se há assinatura VALIDADA e liberada clinicamente
+  let isReleased = false
+  try {
+    const sigs = $app.findRecordsByFilter(
+      'report_signatures',
+      `report_document_id = '${doc.id}' && signature_status = 'VALIDADA' && is_clinically_released = true`,
+      '',
+      1,
+      0,
+    )
+    if (sigs.length > 0) isReleased = true
+  } catch (_) {}
+
+  // Para usuários da clínica: bloqueio estrito de acesso a documentos não liberados ou de outras orgs
+  if (!isCardioOrAdmin) {
+    if (!isMemberOfExamOrg) {
+      throw new ForbiddenError('Acesso negado: o documento pertence a outra organização.')
+    }
+    if (!isReleased) {
+      throw new ForbiddenError(
+        'Este laudo ainda não possui assinatura digital válida e liberação clínica formal. O download permanece estritamente bloqueado.',
+      )
+    }
+  }
+
+  // Token temporário protegido com HMAC-SHA256 e expiração curta (5 minutos)
+  const tokenSecret = $os.getenv('APP_ACCESS_SECRET') || 'telelaudos-report-access-salt-2026'
+  const expTimestamp = Math.floor(Date.now() / 1000) + 300 // 5 minutos
+  const payloadToSign = `${doc.id}:${authRecord.id}:${expTimestamp}`
+  const signature = $security.hs256(payloadToSign, tokenSecret)
+  const secureAccessToken = `${expTimestamp}.${signature}`
+
+  // Registro de visualização / requisição de acesso na auditoria imutável
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', authRecord.id)
+    auditRec.set('organization_id', exam.getString('organization_id'))
+    auditRec.set('action', 'REPORT_VIEW_TOKEN_GENERATED')
+    auditRec.set('target_collection', 'report_documents')
+    auditRec.set('target_id', doc.id)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Token de visualização e download gerado. Documento: ${doc.getString('document_code')} v${doc.getInt('version')} SHA-256: ${doc.getString('file_hash_sha256')}`,
+    )
+    $app.save(auditRec)
+  } catch (err) {
+    console.log('Falha audit token view:', err)
+  }
+
+  return e.json(200, {
+    success: true,
+    documentId: doc.id,
+    documentCode: doc.getString('document_code'),
+    version: doc.getInt('version'),
+    fileHashSha256: doc.getString('file_hash_sha256'),
+    isClinicallyReleased: isReleased,
+    accessToken: secureAccessToken,
+    expiresInSeconds: 300,
+    downloadUrl: `/backend/v1/documents/${doc.id}/download-secure?token=${encodeURIComponent(secureAccessToken)}&u=${authRecord.id}`,
+  })
+})
+
+// 15. Download do Laudo com Token Temporário Protegido e Auditoria
+routerAdd('GET', '/backend/v1/documents/{id}/download-secure', (e) => {
+  const docId = e.request.pathValue('id')
+  const doc = $app.findRecordById('report_documents', docId)
+  if (!doc) {
+    throw new NotFoundError('Documento médico não localizado.')
+  }
+
+  const token = e.request.url.query().get('token')
+  const userId = e.request.url.query().get('u')
+  if (!token || !userId) {
+    throw new ForbiddenError('Token de acesso temporário ou identificação ausente.')
+  }
+
+  const parts = token.split('.')
+  if (parts.length !== 2) {
+    throw new ForbiddenError('Formato de token inválido.')
+  }
+
+  const expTimestamp = parseInt(parts[0], 10)
+  const signature = parts[1]
+  const currentSec = Math.floor(Date.now() / 1000)
+
+  if (isNaN(expTimestamp) || currentSec > expTimestamp) {
+    throw new ForbiddenError('O token de acesso temporário expirou. Solicite um novo acesso.')
+  }
+
+  const tokenSecret = $os.getenv('APP_ACCESS_SECRET') || 'telelaudos-report-access-salt-2026'
+  const expectedSig = $security.hs256(`${doc.id}:${userId}:${expTimestamp}`, tokenSecret)
+  if (signature !== expectedSig) {
+    throw new ForbiddenError('Assinatura do token de acesso inválida.')
+  }
+
+  const examId = doc.getString('exam_request_id')
+  const exam = $app.findRecordById('exam_requests', examId)
+
+  // Auditoria obrigatória do download realizado via token
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', userId)
+    auditRec.set('organization_id', exam.getString('organization_id'))
+    auditRec.set('action', 'REPORT_PDF_DOWNLOAD_SECURE')
+    auditRec.set('target_collection', 'report_documents')
+    auditRec.set('target_id', doc.id)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Download efetuado via token temporário seguro. Documento: ${doc.getString('document_code')} v${doc.getInt('version')} SHA-256: ${doc.getString('file_hash_sha256')}`,
+    )
+    $app.save(auditRec)
+  } catch (err) {
+    console.log('Falha audit download secure:', err)
+  }
+
+  return e.json(200, {
+    success: true,
+    documentId: doc.id,
+    documentCode: doc.getString('document_code'),
+    version: doc.getInt('version'),
+    fileHashSha256: doc.getString('file_hash_sha256'),
+    fileSizeBytes: doc.getInt('file_size_bytes'),
+    generatedAt: doc.getString('generated_at'),
+    fileName: doc.getString('pdf_file'),
+  })
+})
+
+// 16. Monitoramento de Prazos (SLA Monitor) e Atualização de Notificações
+// Endpoint sob demanda para reavaliar exames próximos do vencimento ou atrasados
+routerAdd('POST', '/backend/v1/sla/refresh-status', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const now = new Date()
+  const activeExams = $app.findRecordsByFilter(
+    'exam_requests',
+    "status = 'pending' || status = 'in_analysis' || status = 'waiting_signature'",
+    '-created',
+    100,
+    0,
+  )
+
+  let updatedCount = 0
+  let nearWarningCount = 0
+  let overdueCount = 0
+
+  for (const ex of activeExams) {
+    const orgId = ex.getString('organization_id')
+    let deadlineStr = ex.getString('deadline_at')
+    const urgency = ex.getString('urgency') || 'routine'
+    const warningThresholdMin = 30
+
+    // Se ainda não tiver deadline_at preenchido, calcular retroativamente
+    if (!deadlineStr) {
+      let slaHours = urgency === 'urgent' ? 2 : 24
+      try {
+        const slas = $app.findRecordsByFilter(
+          'contract_slas',
+          `organization_id = '${orgId}'`,
+          '',
+          1,
+          0,
+        )
+        if (slas.length > 0) {
+          slaHours =
+            urgency === 'urgent'
+              ? slas[0].getInt('urgent_sla_hours') || 2
+              : slas[0].getInt('routine_sla_hours') || 24
+        }
+      } catch (_) {}
+
+      const createdDate = new Date(ex.getString('created'))
+      const computedDeadline = new Date(createdDate.getTime() + slaHours * 3600 * 1000)
+      deadlineStr = computedDeadline.toISOString()
+      ex.set('deadline_at', deadlineStr)
+    }
+
+    const deadlineDate = new Date(deadlineStr)
+    const diffMs = deadlineDate.getTime() - now.getTime()
+    const diffMin = Math.round(diffMs / (60 * 1000))
+
+    let newSlaStatus = 'no_prazo'
+    if (diffMs <= 0) {
+      newSlaStatus = 'atrasado'
+      overdueCount++
+    } else if (diffMin <= warningThresholdMin) {
+      newSlaStatus = 'proximo_do_vencimento'
+      nearWarningCount++
+    }
+
+    const oldSlaStatus = ex.getString('sla_status')
+    if (oldSlaStatus !== newSlaStatus) {
+      ex.set('sla_status', newSlaStatus)
+      $app.save(ex)
+      updatedCount++
+
+      // Emitir notificação se mudou para atrasado ou próximo do vencimento
+      try {
+        const notifCol = $app.findCollectionByNameOrId('internal_notifications')
+        if (newSlaStatus === 'atrasado') {
+          // Checar se já não foi notificado recentemente para evitar repetição
+          const existing = $app.findRecordsByFilter(
+            'internal_notifications',
+            `exam_request_id = '${ex.id}' && notification_type = 'EXAME_ATRASADO'`,
+            '',
+            1,
+            0,
+          )
+          if (existing.length === 0) {
+            const notif = new Record(notifCol)
+            notif.set('organization_id', orgId)
+            notif.set('exam_request_id', ex.id)
+            notif.set('notification_type', 'EXAME_ATRASADO')
+            notif.set('title', 'Alerta: Exame com prazo de SLA extrapolado')
+            notif.set(
+              'message',
+              `O ECG protocolo ${ex.id.slice(-6).toUpperCase()} ultrapassou o tempo contratual estabelecido.`,
+            )
+            notif.set('target_role', 'all')
+            notif.set('is_read', false)
+            $app.save(notif)
+          }
+        } else if (newSlaStatus === 'proximo_do_vencimento') {
+          const existing = $app.findRecordsByFilter(
+            'internal_notifications',
+            `exam_request_id = '${ex.id}' && notification_type = 'EXAME_PROXIMO_DO_PRAZO'`,
+            '',
+            1,
+            0,
+          )
+          if (existing.length === 0) {
+            const notif = new Record(notifCol)
+            notif.set('organization_id', orgId)
+            notif.set('exam_request_id', ex.id)
+            notif.set('notification_type', 'EXAME_PROXIMO_DO_PRAZO')
+            notif.set('title', 'Aviso: Exame próximo do vencimento de SLA')
+            notif.set(
+              'message',
+              `O ECG protocolo ${ex.id.slice(-6).toUpperCase()} possui menos de ${warningThresholdMin} min para encerramento do prazo contratual.`,
+            )
+            notif.set('target_role', 'cardiologist')
+            notif.set('is_read', false)
+            $app.save(notif)
+          }
+        }
+      } catch (err) {
+        console.log('Falha emitir notificação SLA:', err)
+      }
+    }
+  }
+
+  return e.json(200, {
+    success: true,
+    totalEvaluated: activeExams.length,
+    updatedCount,
+    nearWarningCount,
+    overdueCount,
+    timestamp: now.toISOString(),
+  })
+})
+
+// -------------------------------------------------------------
 // REGRAS DE INTEGRIDADE EM RECORD HOOKS (CREATE / UPDATE / DELETE)
 // -------------------------------------------------------------
 
@@ -2491,7 +2811,60 @@ onRecordCreateRequest((e) => {
     }
   }
 
+  // 4. Etapa 5: Ao criar exam_requests, calcular deadline_at com base no contract_slas e criar notificação interna
+  if (collectionName === 'exam_requests') {
+    const orgId = e.record.get('organization_id')
+    const urgency = e.record.getString('urgency') || 'routine'
+    let slaHours = urgency === 'urgent' ? 2 : 24 // Sem modalidade de emergência nesta etapa
+
+    // Buscar configuração de SLA contratual da organização
+    try {
+      const slas = $app.findRecordsByFilter(
+        'contract_slas',
+        `organization_id = '${orgId}' && is_active = true`,
+        '',
+        1,
+        0,
+      )
+      if (slas.length > 0) {
+        const cfg = slas[0]
+        if (urgency === 'urgent') {
+          slaHours = cfg.getInt('urgent_sla_hours') || 2
+        } else {
+          slaHours = cfg.getInt('routine_sla_hours') || 24
+        }
+      }
+    } catch (_) {}
+
+    // Cálculo do prazo (horas corridas ou horário útil configurado)
+    const now = new Date()
+    const deadline = new Date(now.getTime() + slaHours * 3600 * 1000)
+    e.record.set('deadline_at', deadline.toISOString())
+    e.record.set('sla_status', 'no_prazo')
+  }
+
   e.next()
+
+  // Pós-criação de exam_requests: gerar notificação interna discreta
+  if (collectionName === 'exam_requests') {
+    try {
+      const notifCol = $app.findCollectionByNameOrId('internal_notifications')
+      const notif = new Record(notifCol)
+      notif.set('organization_id', e.record.get('organization_id'))
+      notif.set('exam_request_id', e.record.id)
+      notif.set('notification_type', 'NOVO_ECG_RECEBIDO')
+      notif.set('title', 'Novo ECG recebido na fila')
+      notif.set(
+        'message',
+        `Novo traçado de ECG (${e.record.getString('urgency') === 'urgent' ? 'Prioritário' : 'Rotina'}) registrado para interpretação. Protocolo: ${e.record.id.slice(-6).toUpperCase()}.`,
+      )
+      notif.set('target_role', 'cardiologist')
+      notif.set('is_read', false)
+      $app.save(notif)
+    } catch (notifErr) {
+      console.log('Falha ao emitir notificação NOVO_ECG_RECEBIDO:', notifErr)
+    }
+  }
 
   try {
     const auditCol = $app.findCollectionByNameOrId('audit_logs')

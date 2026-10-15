@@ -34,12 +34,15 @@ import {
   CheckCircle2,
   ShieldCheck,
   Lock,
+  FileCheck2,
 } from 'lucide-react'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
+import ResultsPortal from '@/components/ResultsPortal'
+import NotificationsPopover from '@/components/NotificationsPopover'
 
 export default function ClinicDashboard() {
   const { currentOrg, currentRole, user } = useAuth()
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState('portal')
   const [patients, setPatients] = useState<Patient[]>([])
   const [units, setUnits] = useState<Unit[]>([])
   const [myExams, setMyExams] = useState<ExamRequest[]>([])
@@ -181,6 +184,7 @@ export default function ClinicDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          <NotificationsPopover orgId={currentOrg?.id} role={currentRole || undefined} />
           <Badge
             variant="outline"
             className="bg-emerald-50 text-emerald-800 border-emerald-300 py-1 text-xs gap-1.5"
@@ -191,9 +195,16 @@ export default function ClinicDashboard() {
         </div>
       </div>
 
-      {/* Tabs da Clínica */}
+      {/* Tabs da Clínica com Portal de Resultados na vanguarda */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full h-auto p-1 bg-slate-200/80 gap-1 text-xs">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-5 w-full h-auto p-1 bg-slate-200/80 gap-1 text-xs">
+          <TabsTrigger
+            value="portal"
+            className="py-2 flex items-center justify-center gap-1.5 font-bold"
+          >
+            <FileCheck2 className="w-3.5 h-3.5 text-[#0E4C92]" />
+            <span>Portal de Resultados</span>
+          </TabsTrigger>
           <TabsTrigger value="overview" className="py-2">
             Painel Geral
           </TabsTrigger>
@@ -204,9 +215,35 @@ export default function ClinicDashboard() {
             Enviar ECG
           </TabsTrigger>
           <TabsTrigger value="exams" className="py-2">
-            Meus Exames ({myExams.length})
+            Histórico Simples ({myExams.length})
           </TabsTrigger>
         </TabsList>
+
+        {/* 0. PORTAL DE RESULTADOS (ETAPA 5) */}
+        <TabsContent value="portal" className="space-y-4 pt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <FileCheck2 className="w-5 h-5 text-[#0E4C92]" />
+                <span>Portal de Resultados & Laudos Clínicos</span>
+              </h2>
+              <p className="text-xs text-slate-600">
+                Consulta completa com filtros por período, paciente e situação. Download auditado
+                exclusivo para laudos com assinatura PAdES validada.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadClinicData}
+              className="text-xs h-8 border-slate-300"
+            >
+              Atualizar Lista
+            </Button>
+          </div>
+
+          <ResultsPortal exams={myExams} onRefresh={loadClinicData} />
+        </TabsContent>
 
         {/* 1. VISÃO GERAL */}
         <TabsContent value="overview" className="space-y-6 pt-4">

@@ -47,10 +47,12 @@ import {
   RefreshCw,
   FolderOpen,
   X,
+  AlertTriangle,
 } from 'lucide-react'
 import EcgViewer from '@/components/EcgViewer'
 import ReportEditor from '@/components/ReportEditor'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
+import NotificationsPopover from '@/components/NotificationsPopover'
 
 export function CardiologistDashboard() {
   const { user } = useAuth()
@@ -412,6 +414,8 @@ export function CardiologistDashboard() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <NotificationsPopover role="cardiologist" />
+
           <Button
             size="sm"
             onClick={loadInitialData}
@@ -428,7 +432,7 @@ export function CardiologistDashboard() {
             className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5 shadow"
           >
             <ShieldAlert className="w-3.5 h-3.5" />
-            <span>Executar Bateria de Testes (Etapa 3)</span>
+            <span>Executar Testes de Segurança</span>
           </Button>
         </div>
       </div>
@@ -647,6 +651,19 @@ export function CardiologistDashboard() {
                             Marcapasso
                           </Badge>
                         )}
+                        {/* Indicador de SLA: Próximo do Vencimento ou Atrasado */}
+                        {exam.sla_status === 'atrasado' && (
+                          <Badge className="bg-red-600 text-white border-red-700 text-[10px] animate-pulse flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            <span>SLA Atrasado</span>
+                          </Badge>
+                        )}
+                        {exam.sla_status === 'proximo_do_vencimento' && (
+                          <Badge className="bg-amber-500 text-white border-amber-600 text-[10px] flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            <span>Vence em breve</span>
+                          </Badge>
+                        )}
                       </div>
 
                       <div className="text-[11px] text-slate-600 flex flex-wrap items-center gap-3">
@@ -665,6 +682,27 @@ export function CardiologistDashboard() {
                             minute: '2-digit',
                           })}
                         </span>
+                        {exam.deadline_at && (
+                          <>
+                            <span>•</span>
+                            <span
+                              className={`flex items-center gap-1 ${
+                                exam.sla_status === 'atrasado'
+                                  ? 'text-red-700 font-bold'
+                                  : exam.sla_status === 'proximo_do_vencimento'
+                                    ? 'text-amber-700 font-bold'
+                                    : 'text-slate-600'
+                              }`}
+                            >
+                              <Clock className="w-3 h-3" />
+                              Prazo Contratual:{' '}
+                              {new Date(exam.deadline_at).toLocaleTimeString('pt-BR', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                          </>
+                        )}
                         {exam.assigned_at && (
                           <>
                             <span>•</span>

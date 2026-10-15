@@ -118,7 +118,7 @@ export default function Layout() {
             ) : (
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-sm">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Etapa 1 — Fundação Ativa</span>
+                <span>Etapa 5 — Portal, SLA & Notificações Ativos</span>
               </div>
             )}
           </div>
@@ -136,27 +136,27 @@ export default function Layout() {
           <div className="space-y-1 text-center md:text-left">
             <div className="flex items-center justify-center md:justify-start gap-2 text-white font-semibold">
               <ShieldAlert className="w-4 h-4 text-amber-400" />
-              <span>Diretriz Operacional — Etapa 1 (Fundação)</span>
+              <span>Diretriz Operacional — Etapa 5 (Portal de Resultados, SLA e Notificações)</span>
             </div>
             <p className="text-slate-300 text-xs sm:text-sm max-w-2xl leading-relaxed">
-              Ambiente de validação e testes com dados fictícios. Autenticação, isolamento
-              multi-tenant por organização e API rules operando no Skip Cloud / PocketBase. Módulos
-              de laudo clínico, assinatura digital e integrações serão implementados nas etapas
-              seguintes sob autorização expressa.
+              Ambiente de homologação estrita com dados fictícios. Portal de resultados isolado,
+              controle de prazos contratuais (SLA 24h/2h), notificações internas automáticas e
+              downloads seguros com validação criptográfica estrita PAdES. Sem provedores de
+              assinatura ativados e sem publicação para operação clínica real.
             </p>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-4 text-xs text-slate-300 shrink-0">
             <Link
-              to="/auditoria"
+              to="/homologacao"
               className="flex items-center gap-1.5 bg-blue-950/60 hover:bg-blue-900 px-3 py-1.5 rounded-md border border-blue-800 transition-colors text-white"
             >
               <FileText className="w-3.5 h-3.5 text-[#00A6A6]" />
-              <span>Relatório Técnico de Auditoria</span>
+              <span>Painel de Homologação</span>
             </Link>
             <div className="flex items-center gap-1.5 text-emerald-300 font-medium">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Etapa 1 Aprovada e Operacional</span>
+              <span>Etapa 5 Homologada</span>
             </div>
           </div>
         </div>

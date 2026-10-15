@@ -113,6 +113,8 @@ export interface ExamRequest {
   return_reason?: string
   assigned_at?: string
   priority_score?: number
+  deadline_at?: string
+  sla_status?: 'no_prazo' | 'proximo_do_vencimento' | 'atrasado' | 'concluido'
   created: string
   updated: string
   expand?: {
@@ -121,6 +123,58 @@ export interface ExamRequest {
     patient_id?: Patient
     requested_by?: AuthUser
     assigned_doctor_id?: Doctor
+  }
+}
+
+// -------------------------------------------------------------
+// ETAPA 5: CONTRATOS, SLA, NOTIFICAÇÕES E PORTAL DE RESULTADOS
+// -------------------------------------------------------------
+
+export interface ContractSLA {
+  id: string
+  organization_id: string
+  contract_name: string
+  routine_sla_hours: number
+  urgent_sla_hours: number
+  emergency_enabled: boolean
+  business_hours_start?: string
+  business_hours_end?: string
+  operates_on_weekends?: boolean
+  warning_threshold_minutes?: number
+  is_active: boolean
+  notes?: string
+  created: string
+  updated: string
+  expand?: {
+    organization_id?: Organization
+  }
+}
+
+export type NotificationType =
+  | 'NOVO_ECG_RECEBIDO'
+  | 'EXAME_DEVOLVIDO_QUALIDADE'
+  | 'EXAME_PROXIMO_DO_PRAZO'
+  | 'EXAME_ATRASADO'
+  | 'LAUDO_VALIDADO_LIBERADO'
+  | 'AVISO_SISTEMA'
+
+export interface InternalNotification {
+  id: string
+  organization_id?: string
+  user_id?: string
+  exam_request_id?: string
+  notification_type: NotificationType
+  title: string
+  message: string
+  target_role?: 'all' | 'admin' | 'cardiologist' | 'clinic_manager' | 'clinic_operator'
+  is_read: boolean
+  read_at?: string
+  created: string
+  updated: string
+  expand?: {
+    organization_id?: Organization
+    exam_request_id?: ExamRequest
+    user_id?: AuthUser
   }
 }
 

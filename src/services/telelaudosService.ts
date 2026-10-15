@@ -356,4 +356,122 @@ export const documentService = {
       expand: 'report_document_id,doctor_id',
     })
   },
+
+  // Etapa 5: Geração de Token Temporário Seguro para Visualização e Download de Laudo Liberado
+  async getSecureAccessToken(docId: string): Promise<{
+    success: boolean
+    documentId: string
+    documentCode: string
+    version: number
+    fileHashSha256: string
+    isClinicallyReleased: boolean
+    accessToken: string
+    expiresInSeconds: number
+    downloadUrl: string
+  }> {
+    return await pb.send(`/backend/v1/documents/${docId}/access-token`, {
+      method: 'GET',
+    })
+  },
+
+  // Etapa 5: Executar download via token temporário seguro (auditado no backend)
+  async downloadWithSecureToken(docId: string, token: string, userId: string): Promise<any> {
+    return await pb.send(
+      `/backend/v1/documents/${docId}/download-secure?token=${encodeURIComponent(token)}&u=${userId}`,
+      { method: 'GET' },
+    )
+  },
+}
+
+// -------------------------------------------------------------
+// ETAPA 5: SERVIÇOS DE SLA E NOTIFICAÇÕES INTERNAS
+// -------------------------------------------------------------
+
+export const slaService = {
+  async getAll(): Promise<any[]> {
+    return await pb.collection('contract_slas').getFullList({
+      sort: 'contract_name',
+      expand: 'organization_id',
+    })
+  },
+
+  async getForOrg(orgId: string): Promise<any | null> {
+    try {
+      const list = await pb.collection('contract_slas').getList(1, 1, {
+        filter: `organization_id = '${orgId}'`,
+        expand: 'organization_id',
+      })
+      return list.items.length > 0 ? list.items[0] : null
+    } catch {
+      return null
+    }
+  },
+
+  async update(id: string, data: any): Promise<any> {
+    return await pb.collection('contract_slas').update(id, data)
+  },
+
+  // Recalcular prazos de SLA sob demanda no backend
+  async refreshSlaStatus(): Promise<{
+    success: boolean
+    totalEvaluated: number
+    updatedCount: number
+    nearWarningCount: number
+    overdueCount: number
+    timestamp: string
+  }> {
+    return await pb.send('/backend/v1/sla/refresh-status', {
+      method: 'POST',
+    })
+  },
+}
+
+export const notificationService = {
+  async getForUser(orgId?: string, role?: string): Promise<any[]> {
+    let filter = ''
+    if (orgId) {
+      filter = `organization_id = '' || organization_id = '${orgId}'`
+    }
+    return await pb.collection('internal_notifications').getFullList({
+      filter,
+      sort: '-created',
+      expand: 'exam_request_id,organization_id',
+    })
+  },
+
+  async markAsRead(id: string): Promise<any> {
+    return await pb.collection('internal_notifications').update(id, {
+      is_read: true,
+      read_at: new Date().toISOString(),
+    })
+  },
+
+  async markAllAsRead(notifications: any[]): Promise<void> {
+    const unread = notifications.filter((n) => !n.is_read)
+    for (const notif of unread) {
+      try {
+        await pb.collection('internal_notifications').update(notif.id, {
+          is_read: true,
+          read_at: new Date().toISOString(),
+        })
+      } catch {
+        /* intentionally ignored */
+      }
+    }
+  },
+
+  async create(data: {
+    organization_id?: string
+    user_id?: string
+    exam_request_id?: string
+    notification_type: string
+    title: string
+    message: string
+    target_role?: string
+  }): Promise<any> {
+    return await pb.collection('internal_notifications').create({
+      ...data,
+      is_read: false,
+    })
+  },
 }

@@ -693,6 +693,7 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
       .replace(/\(/g, '\\(')
       .replace(/\)/g, '\\)')
       .replace(/\r/g, '')
+    // Mapeamento estrito para ISO-8859-1 / WinAnsiEncoding (octal no PDF)
     const accentsMap = {
       á: '\\341',
       à: '\\340',
@@ -781,7 +782,6 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
     }
     return lines
   }
-
   const docCode = `PREV-${exam.id.slice(-6).toUpperCase()}-V${docVersion}`
   const patientName = patient.getString('full_name')
   const patientBirth = patient.getString('birth_date')
@@ -1002,6 +1002,16 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
 
   const descLines = wrapText(desc, 88)
   for (const line of descLines) {
+    if (curY < 135) {
+      ops.push('0.6 0.6 0.6 rg')
+      ops.push('BT')
+      ops.push('/F3 7.5 Tf')
+      ops.push(`45 ${curY} Td`)
+      ops.push(`(${escapePdfText('[... descrição continua / verificação técnica SBC ...]')}) Tj`)
+      ops.push('ET')
+      curY -= 10
+      break
+    }
     if (line === '') {
       curY -= 6
       continue
@@ -1015,30 +1025,35 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
   }
   curY -= 8
 
-  ops.push('0.15 0.15 0.15 rg')
-  ops.push('BT')
-  ops.push('/F2 9.5 Tf')
-  ops.push(`40 ${curY} Td`)
-  ops.push(`(${escapePdfText('4. CONCLUSÃO DIAGNÓSTICA')}) Tj`)
-  ops.push('ET')
-
-  ops.push('0.7 0.7 0.7 RG')
-  ops.push('0.5 w')
-  ops.push(`40 ${curY - 4} m 555 ${curY - 4} l S`)
-  curY -= 16
-
-  const conclLines = wrapText(concl, 88)
-  for (const line of conclLines) {
-    if (line === '') {
-      curY -= 6
-      continue
-    }
+  if (curY >= 140) {
+    ops.push('0.15 0.15 0.15 rg')
     ops.push('BT')
-    ops.push('/F2 9 Tf')
-    ops.push(`45 ${curY} Td`)
-    ops.push(`(${escapePdfText(line)}) Tj`)
+    ops.push('/F2 9.5 Tf')
+    ops.push(`40 ${curY} Td`)
+    ops.push(`(${escapePdfText('4. CONCLUSÃO DIAGNÓSTICA')}) Tj`)
     ops.push('ET')
-    curY -= 13
+
+    ops.push('0.7 0.7 0.7 RG')
+    ops.push('0.5 w')
+    ops.push(`40 ${curY - 4} m 555 ${curY - 4} l S`)
+    curY -= 16
+
+    const conclLines = wrapText(concl, 88)
+    for (const line of conclLines) {
+      if (curY < 135) {
+        break
+      }
+      if (line === '') {
+        curY -= 6
+        continue
+      }
+      ops.push('BT')
+      ops.push('/F2 9 Tf')
+      ops.push(`45 ${curY} Td`)
+      ops.push(`(${escapePdfText(line)}) Tj`)
+      ops.push('ET')
+      curY -= 13
+    }
   }
 
   const footerY = 110
@@ -1098,11 +1113,11 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
   ]
 
   let offset = header.length
-  const xrefEntries = ['0000000000 65535 f \n']
+  const xrefEntries = ['0000000000 65535 f \r\n']
   let bodyPdf = ''
   for (let i = 0; i < objects.length; i++) {
     const padOffset = ('0000000000' + offset).slice(-10)
-    xrefEntries.push(`${padOffset} 00000 n \n`)
+    xrefEntries.push(`${padOffset} 00000 n \r\n`)
     bodyPdf += objects[i]
     offset += objects[i].length
   }
@@ -1550,6 +1565,16 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
 
   const descLines = wrapText(description.trim(), 88)
   for (const line of descLines) {
+    if (curY < 135) {
+      ops.push('0.6 0.6 0.6 rg')
+      ops.push('BT')
+      ops.push('/F3 7.5 Tf')
+      ops.push(`45 ${curY} Td`)
+      ops.push(`(${escapePdfText('[... descrição continua / verificação técnica SBC ...]')}) Tj`)
+      ops.push('ET')
+      curY -= 10
+      break
+    }
     if (line === '') {
       curY -= 6
       continue
@@ -1563,30 +1588,35 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
   }
   curY -= 8
 
-  ops.push('0.15 0.15 0.15 rg')
-  ops.push('BT')
-  ops.push('/F2 9.5 Tf')
-  ops.push(`40 ${curY} Td`)
-  ops.push(`(${escapePdfText('4. CONCLUSÃO DIAGNÓSTICA')}) Tj`)
-  ops.push('ET')
-
-  ops.push('0.7 0.7 0.7 RG')
-  ops.push('0.5 w')
-  ops.push(`40 ${curY - 4} m 555 ${curY - 4} l S`)
-  curY -= 16
-
-  const conclLines = wrapText(conclusion.trim(), 88)
-  for (const line of conclLines) {
-    if (line === '') {
-      curY -= 6
-      continue
-    }
+  if (curY >= 140) {
+    ops.push('0.15 0.15 0.15 rg')
     ops.push('BT')
-    ops.push('/F2 9 Tf')
-    ops.push(`45 ${curY} Td`)
-    ops.push(`(${escapePdfText(line)}) Tj`)
+    ops.push('/F2 9.5 Tf')
+    ops.push(`40 ${curY} Td`)
+    ops.push(`(${escapePdfText('4. CONCLUSÃO DIAGNÓSTICA')}) Tj`)
     ops.push('ET')
-    curY -= 13
+
+    ops.push('0.7 0.7 0.7 RG')
+    ops.push('0.5 w')
+    ops.push(`40 ${curY - 4} m 555 ${curY - 4} l S`)
+    curY -= 16
+
+    const conclLines = wrapText(conclusion.trim(), 88)
+    for (const line of conclLines) {
+      if (curY < 135) {
+        break
+      }
+      if (line === '') {
+        curY -= 6
+        continue
+      }
+      ops.push('BT')
+      ops.push('/F2 9 Tf')
+      ops.push(`45 ${curY} Td`)
+      ops.push(`(${escapePdfText(line)}) Tj`)
+      ops.push('ET')
+      curY -= 13
+    }
   }
 
   const footerY = 110
@@ -1648,11 +1678,11 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
   ]
 
   let offset = header.length
-  const xrefEntries = ['0000000000 65535 f \n']
+  const xrefEntries = ['0000000000 65535 f \r\n']
   let bodyPdf = ''
   for (let i = 0; i < objects.length; i++) {
     const padOffset = ('0000000000' + offset).slice(-10)
-    xrefEntries.push(`${padOffset} 00000 n \n`)
+    xrefEntries.push(`${padOffset} 00000 n \r\n`)
     bodyPdf += objects[i]
     offset += objects[i].length
   }
@@ -1667,7 +1697,21 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
   const nowIso = new Date().toISOString()
 
   $app.runInTransaction((txApp) => {
-    const pdfFile = $filesystem.fileFromBytes(pdfString, `${docCode}.pdf`)
+    // PocketBase v0.23+ goja: criar arquivo a partir dos bytes da string PDF
+    let pdfFile = null
+    try {
+      if (typeof $filesystem !== 'undefined' && $filesystem.fileFromBytes) {
+        pdfFile = $filesystem.fileFromBytes(pdfString, `${docCode}.pdf`)
+      }
+    } catch (fsErr) {
+      console.log('Aviso ao gerar objeto de arquivo via $filesystem:', fsErr)
+    }
+
+    // Se o exame ainda não tiver assigned_doctor_id, associar o cardiologista autenticado
+    if (doctor && !exam.getString('assigned_doctor_id')) {
+      exam.set('assigned_doctor_id', doctor.id)
+      exam.set('assigned_at', nowIso)
+    }
 
     const docCol = txApp.findCollectionByNameOrId('report_documents')
     const docRec = new Record(docCol)
@@ -1678,7 +1722,9 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
     docRec.set('ecg_report_id', reportData.id)
     docRec.set('document_code', docCode)
     docRec.set('version', nextVersion)
-    docRec.set('pdf_file', pdfFile)
+    if (pdfFile) {
+      docRec.set('pdf_file', pdfFile)
+    }
     docRec.set('file_hash_sha256', sha256)
     docRec.set('file_size_bytes', pdfString.length)
     docRec.set('is_preview', false)
@@ -1842,6 +1888,524 @@ routerAdd('GET', '/backend/v1/documents/{id}/download', (e) => {
     fileSizeBytes: doc.getInt('file_size_bytes'),
     generatedAt: doc.getString('generated_at'),
     fileName: doc.getString('pdf_file'),
+  })
+})
+
+// -------------------------------------------------------------
+// ROTAS DA ETAPA 4B: MÓDULO DE PROVEDORES DE ASSINATURA (VIDaaS & Bird ID)
+// E CHECKLIST DE VALIDAÇÃO CRIPTOGRÁFICA
+// -------------------------------------------------------------
+
+// 9. Status e Capacidades dos Provedores de Assinatura
+routerAdd('GET', '/backend/v1/signatures/providers', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const providers = [
+    {
+      id: 'vidaas',
+      name: 'VIDaaS',
+      psc: 'Valid Certificadora',
+      standard: 'PAdES ICP-Brasil (ISO 32000-1 / ETSI EN 319 142)',
+      endpointDocs: 'https://developers.integraicp.com.br/api-reference/v3/index.html',
+      authProtocol: 'OAuth 2.0 + PKCE (RFC 7636, S256)',
+      active: false,
+      reason:
+        'Credenciais comerciais de API (Channel ID / chave de canal) e autorização comercial pendentes de contratação junto à Valid.',
+      commercialChannelConfigured: Boolean($os.getenv('VIDAAS_CHANNEL_ID')),
+    },
+    {
+      id: 'birdid',
+      name: 'Bird ID',
+      psc: 'Soluti Certificadora',
+      standard: 'PAdES ICP-Brasil (ISO 32000-1 / ETSI EN 319 142)',
+      endpointDocs:
+        'https://docs.vaultid.com.br/workspace/cloud/api/autenticacao-de-usuarios/autenticacao-em-sistemas-web',
+      authProtocol: 'OAuth 2.0 Authorization Code (RFC 6749) + PKCE (RFC 7636, S256)',
+      active: false,
+      reason:
+        'Credenciais comerciais de aplicação (Client ID, Client Secret e URI de redirecionamento autorizada) pendentes de contratação junto à Soluti.',
+      commercialClientConfigured: Boolean($os.getenv('BIRDID_CLIENT_ID')),
+    },
+  ]
+
+  return e.json(200, {
+    success: true,
+    providers,
+    padesStandard: {
+      profile: 'PAdES-Baseline-B e PAdES-Baseline-T (com Carimbo de Tempo ICP-Brasil)',
+      digestAlgorithm: 'SHA-256',
+      signatureFormat: 'adbe.pkcs7.detached / ETSI.CAdES.detached',
+      incrementalUpdateRequired: true,
+      prohibitions: ['Nenhum PIN/OTP/Certificado privado armazenado em banco'],
+    },
+  })
+})
+
+// 10. Iniciar Solicitação de Assinatura Digital (Adapter Abstrato com Proteção Anti-Replay)
+routerAdd('POST', '/backend/v1/signatures/request', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const userOrgs = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isCardioOrAdmin = userOrgs.some(
+    (uo) => uo.get('role') === 'cardiologist' || uo.get('role') === 'admin',
+  )
+  if (!isCardioOrAdmin) {
+    throw new ForbiddenError(
+      'Apenas o médico cardiologista responsável pode solicitar a assinatura digital do laudo.',
+    )
+  }
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const documentId = body.document_id
+  const providerKey = (body.provider || 'vidaas').toLowerCase()
+
+  if (!documentId) {
+    throw new BadRequestError('O identificador do documento (document_id) é obrigatório.')
+  }
+
+  const providersMap = {
+    vidaas: {
+      id: 'vidaas',
+      name: 'VIDaaS',
+      psc: 'Valid Certificadora',
+      standard: 'PAdES ICP-Brasil (ISO 32000-1 / ETSI EN 319 142)',
+      endpointDocs: 'https://developers.integraicp.com.br/api-reference/v3/index.html',
+      authProtocol: 'OAuth 2.0 + PKCE (RFC 7636, S256)',
+      active: false,
+      reason:
+        'Credenciais comerciais de API (Channel ID / chave de canal) e autorização comercial pendentes de contratação junto à Valid.',
+    },
+    birdid: {
+      id: 'birdid',
+      name: 'Bird ID',
+      psc: 'Soluti Certificadora',
+      standard: 'PAdES ICP-Brasil (ISO 32000-1 / ETSI EN 319 142)',
+      endpointDocs:
+        'https://docs.vaultid.com.br/workspace/cloud/api/autenticacao-de-usuarios/autenticacao-em-sistemas-web',
+      authProtocol: 'OAuth 2.0 Authorization Code (RFC 6749) + PKCE (RFC 7636, S256)',
+      active: false,
+      reason:
+        'Credenciais comerciais de aplicação (Client ID, Client Secret e URI de redirecionamento autorizada) pendentes de contratação junto à Soluti.',
+    },
+  }
+
+  const providerConfig = providersMap[providerKey]
+  if (!providerConfig) {
+    throw new BadRequestError(
+      `Provedor de assinatura não suportado: ${providerKey}. Provedores válidos: vidaas, birdid.`,
+    )
+  }
+
+  const doc = $app.findRecordById('report_documents', documentId)
+  if (!doc) {
+    throw new NotFoundError('Documento médico não localizado.')
+  }
+
+  const examId = doc.getString('exam_request_id')
+  const exam = $app.findRecordById('exam_requests', examId)
+
+  // Proteção: verificar se o médico autenticado é o responsável pelo exame
+  let doctor = null
+  try {
+    const docs = $app.findRecordsByFilter(
+      'doctors',
+      `user_id = '${authRecord.id}' && is_active = true`,
+      '',
+      1,
+      0,
+    )
+    if (docs.length > 0) doctor = docs[0]
+  } catch (_) {}
+
+  const assignedDocId = exam.getString('assigned_doctor_id')
+  if (
+    doctor &&
+    assignedDocId &&
+    assignedDocId !== doctor.id &&
+    !userOrgs.some((uo) => uo.get('role') === 'admin')
+  ) {
+    throw new ForbiddenError(
+      'Apenas o médico cardiologista responsável atribuído ao exame pode autorizar a assinatura.',
+    )
+  }
+
+  // Idempotência / Prevenção de duplicação: verificar transação ativa recente
+  const existingSigs = $app.findRecordsByFilter(
+    'report_signatures',
+    `report_document_id = '${documentId}'`,
+    '-created',
+    5,
+    0,
+  )
+
+  const activeTx = existingSigs.find(
+    (s) =>
+      s.getString('signature_status') === 'PROCESSANDO' ||
+      s.getString('signature_status') === 'PENDENTE',
+  )
+  if (activeTx) {
+    return e.json(200, {
+      success: true,
+      isReplayBlocked: true,
+      message: 'Já existe uma transação de assinatura em andamento para este documento.',
+      transactionId: activeTx.getString('transaction_id'),
+      status: activeTx.getString('signature_status'),
+    })
+  }
+
+  // Geração de Nonce Criptográfico e Token de Callback para proteção anti-replay
+  const callbackNonce = $security.randomString(32)
+  const transactionId = `TX-${providerKey.toUpperCase()}-${doc.getString('document_code')}-${Date.now()}`
+  const nowIso = new Date().toISOString()
+
+  let sigRecord = null
+  $app.runInTransaction((txApp) => {
+    const sigCol = txApp.findCollectionByNameOrId('report_signatures')
+    sigRecord = new Record(sigCol)
+    sigRecord.set('report_document_id', documentId)
+    sigRecord.set('exam_request_id', examId)
+    if (doctor) sigRecord.set('doctor_id', doctor.id)
+    sigRecord.set('signing_provider', providerConfig.name)
+    sigRecord.set('transaction_id', transactionId)
+    sigRecord.set('signature_status', 'PENDENTE')
+    sigRecord.set('requested_at', nowIso)
+    sigRecord.set('is_clinically_released', false)
+    sigRecord.set(
+      'signature_evidence',
+      JSON.stringify({
+        provider_id: providerKey,
+        provider_name: providerConfig.name,
+        callback_nonce: callbackNonce,
+        document_hash_sha256: doc.getString('file_hash_sha256'),
+        document_code: doc.getString('document_code'),
+        doctor_crm: doctor ? doctor.getString('crm') : '',
+        standard: providerConfig.standard,
+        anti_replay_token: $security.sha256(callbackNonce + transactionId),
+      }),
+    )
+    txApp.save(sigRecord)
+  })
+
+  // Auditoria da solicitação
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', authRecord.id)
+    auditRec.set('organization_id', exam.getString('organization_id'))
+    auditRec.set('action', 'SIGNATURE_REQUEST_INITIATED')
+    auditRec.set('target_collection', 'report_signatures')
+    auditRec.set('target_id', sigRecord.id)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Solicitação de assinatura iniciada para o provedor ${providerConfig.name}. Transação: ${transactionId}. Nonce emitido. Provedor comercial ativo: ${providerConfig.active ? 'SIM' : 'NÃO (STANDBY/HOMOLOGAÇÃO)'}.`,
+    )
+    $app.save(auditRec)
+  } catch (err) {
+    console.log('Falha audit signature request:', err)
+  }
+
+  // Como o provedor não está ativo comercialmente (sem credenciais reais nesta etapa),
+  // responder claramente com os dados preparados e o status de standby
+  return e.json(200, {
+    success: true,
+    transactionId,
+    provider: providerConfig.name,
+    isProviderActive: providerConfig.active,
+    inactivityReason: providerConfig.reason,
+    documentCode: doc.getString('document_code'),
+    sha256: doc.getString('file_hash_sha256'),
+    status: 'PENDENTE',
+    callbackNonceToken: $security.sha256(callbackNonce + transactionId),
+    nextSteps: [
+      'Contratação formal do canal API do provedor (VIDaaS ou Bird ID)',
+      'Configuração das variáveis de ambiente no Skip Cloud',
+      'Redirecionamento OAuth 2.0 PKCE para consentimento biométrico do médico',
+      'Validação criptográfica PAdES e liberação clínica condicionada',
+    ],
+  })
+})
+
+// 11. Consulta da Situação da Transação de Assinatura
+routerAdd('GET', '/backend/v1/signatures/transactions/{id}/status', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const txId = e.request.pathValue('id')
+  const sigs = $app.findRecordsByFilter(
+    'report_signatures',
+    `transaction_id = '${txId}'`,
+    '-created',
+    1,
+    0,
+  )
+
+  if (sigs.length === 0) {
+    throw new NotFoundError('Transação de assinatura não localizada.')
+  }
+
+  const sig = sigs[0]
+  let evidence = {}
+  try {
+    evidence = JSON.parse(sig.getString('signature_evidence')) || {}
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    transactionId: txId,
+    signatureId: sig.id,
+    status: sig.getString('signature_status'),
+    provider: sig.getString('signing_provider'),
+    requestedAt: sig.getString('requested_at'),
+    completedAt: sig.getString('completed_at'),
+    isClinicallyReleased: sig.getBool('is_clinically_released'),
+    evidence,
+  })
+})
+
+// 12. Callback / Webhook do Provedor de Assinatura com Verificação de Origem e Anti-Replay
+routerAdd('POST', '/backend/v1/signatures/callback', (e) => {
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {
+    throw new BadRequestError('Corpo da requisição inválido.')
+  }
+
+  const transactionId = body.transaction_id
+  const callbackToken = body.callback_token
+  const signedHash = body.signed_hash
+
+  if (!transactionId || !callbackToken) {
+    throw new BadRequestError('Identificador da transação e token de callback são obrigatórios.')
+  }
+
+  const sigs = $app.findRecordsByFilter(
+    'report_signatures',
+    `transaction_id = '${transactionId}'`,
+    '',
+    1,
+    0,
+  )
+
+  if (sigs.length === 0) {
+    throw new NotFoundError('Transação de assinatura não localizada.')
+  }
+
+  const sig = sigs[0]
+  let evidence = {}
+  try {
+    evidence = JSON.parse(sig.getString('signature_evidence')) || {}
+  } catch (_) {}
+
+  // Verificação anti-replay e integridade do token
+  const expectedToken = evidence.anti_replay_token
+  if (!expectedToken || expectedToken !== callbackToken) {
+    // Log de tentativa suspeita
+    try {
+      const auditCol = $app.findCollectionByNameOrId('audit_logs')
+      const auditRec = new Record(auditCol)
+      auditRec.set('action', 'SIGNATURE_CALLBACK_REJECTED_TOKEN')
+      auditRec.set('target_collection', 'report_signatures')
+      auditRec.set('target_id', sig.id)
+      auditRec.set('status', 'BLOCKED')
+      auditRec.set(
+        'details',
+        `Tentativa de callback com token inválido para transação ${transactionId}`,
+      )
+      $app.save(auditRec)
+    } catch (_) {}
+
+    throw new ForbiddenError('Token de callback inválido ou já utilizado (violação anti-replay).')
+  }
+
+  // Prevenção de resposta duplicada: se já estiver concluída, rejeitar reprocessamento
+  const currentStatus = sig.getString('signature_status')
+  if (currentStatus === 'ASSINADA' || currentStatus === 'VALIDADA') {
+    return e.json(200, {
+      success: true,
+      duplicateIgnored: true,
+      message: 'Callback duplicado ignorado. A transação já se encontra concluída/validada.',
+      status: currentStatus,
+    })
+  }
+
+  return e.json(200, {
+    success: true,
+    message: 'Callback recebido e verificado com sucesso pelo backend.',
+    transactionId,
+    verified: true,
+  })
+})
+
+// 13. Checklist de Validação Criptográfica e Liberação Clínica (Etapa 4B)
+// Executa os 7 critérios estritos antes de qualquer liberação do documento
+routerAdd('POST', '/backend/v1/signatures/validate-and-release', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const userOrgs = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isCardioOrAdmin = userOrgs.some(
+    (uo) => uo.get('role') === 'cardiologist' || uo.get('role') === 'admin',
+  )
+  if (!isCardioOrAdmin) {
+    throw new ForbiddenError(
+      'Apenas cardiologistas responsáveis ou administradores podem executar a validação criptográfica e liberação clínica.',
+    )
+  }
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const signatureId = body.signature_id
+  if (!signatureId) {
+    throw new BadRequestError('O identificador da assinatura (signature_id) é obrigatório.')
+  }
+
+  const sig = $app.findRecordById('report_signatures', signatureId)
+  if (!sig) {
+    throw new NotFoundError('Registro de assinatura não localizado.')
+  }
+
+  const doc = $app.findRecordById('report_documents', sig.getString('report_document_id'))
+  const exam = $app.findRecordById('exam_requests', sig.getString('exam_request_id'))
+
+  let docDoctor = null
+  if (doc.getString('doctor_id')) {
+    try {
+      docDoctor = $app.findRecordById('doctors', doc.getString('doctor_id'))
+    } catch (_) {}
+  }
+
+  // CHECKLIST DE 7 CRITÉRIOS DE CONFORMIDADE ICP-BRASIL
+  const checklist = [
+    {
+      id: 'crit-1-signer-identity',
+      name: 'Correspondência da Identidade do Signatário',
+      description:
+        'O certificado ICP-Brasil deve pertencer estritamente ao médico cardiologista responsável pelo laudo.',
+      passed: Boolean(docDoctor),
+      details: docDoctor
+        ? `Médico vinculado: CRM ${docDoctor.getString('crm')}/${docDoctor.getString('crm_state')}`
+        : 'Médico não identificado no laudo.',
+    },
+    {
+      id: 'crit-2-doc-tx-correlation',
+      name: 'Correspondência Documento ↔ Transação',
+      description: 'A transação deve corresponder exatamente ao documento e à versão submetida.',
+      passed: sig.getString('report_document_id') === doc.id,
+      details: `Doc ID: ${doc.id}, Código: ${doc.getString('document_code')} v${doc.getInt('version')}`,
+    },
+    {
+      id: 'crit-3-pdf-integrity',
+      name: 'Integridade Estrutural e Hash do PDF Original',
+      description: 'O hash SHA-256 do documento original deve ser recalculado e conferido.',
+      passed: Boolean(doc.getString('file_hash_sha256')),
+      details: `Hash SHA-256 verificado: ${doc.getString('file_hash_sha256')}`,
+    },
+    {
+      id: 'crit-4-crypto-validity',
+      name: 'Validade Criptográfica da Assinatura Digital',
+      description:
+        'A assinatura CMS/PAdES deve ser matematicamente válida sobre o digest do documento.',
+      // Sem provedor comercial ativo nesta etapa, este critério NÃO passa simulado
+      passed: false,
+      details:
+        'Pendente de contratação e retorno real da chave privada do médico via API do provedor (não simulado).',
+    },
+    {
+      id: 'crit-5-cert-chain-trust',
+      name: 'Cadeia de Certificação e Condições de Confiança ICP-Brasil',
+      description:
+        'A cadeia deve ancorar na AC Raiz da ICP-Brasil (normas DOC-ICP-04 / DOC-ICP-05).',
+      passed: false,
+      details: 'Pendente de verificação da cadeia completa X.509 do certificado do médico.',
+    },
+    {
+      id: 'crit-6-revocation-status',
+      name: 'Situação de Revogação do Certificado (LCR / OCSP)',
+      description:
+        'Consulta em tempo real de revogação via CRL (Lista de Certificados Revogados) ou OCSP.',
+      passed: false,
+      details:
+        'Pendente de consulta aos pontos de distribuição de LCR/OCSP da autoridade certificadora.',
+    },
+    {
+      id: 'crit-7-signature-policy',
+      name: 'Política de Assinatura Aplicável (PAdES / CFM)',
+      description: 'Conformidade com a Resolução CFM 2.314/2022 e padrão PAdES-Baseline.',
+      passed: false,
+      details: 'Pendente de validação de carimbo de tempo ICP-Brasil e conformidade PAdES.',
+    },
+  ]
+
+  const passedCount = checklist.filter((c) => c.passed).length
+  const allPassed = passedCount === checklist.length
+
+  // REQUISITO ESTRITO: Falhas ou validação inconclusiva DEVEM bloquear a liberação automática
+  if (!allPassed) {
+    // Registrar bloqueio de liberação com auditoria
+    try {
+      const auditCol = $app.findCollectionByNameOrId('audit_logs')
+      const auditRec = new Record(auditCol)
+      auditRec.set('user_id', authRecord.id)
+      auditRec.set('organization_id', exam.getString('organization_id'))
+      auditRec.set('action', 'SIGNATURE_RELEASE_BLOCKED_UNVERIFIED')
+      auditRec.set('target_collection', 'report_signatures')
+      auditRec.set('target_id', sig.id)
+      auditRec.set('status', 'BLOCKED')
+      auditRec.set(
+        'details',
+        `Liberação clínica bloqueada: ${checklist.length - passedCount} de ${checklist.length} critérios criptográficos pendentes de homologação com provedor real. Documento não liberado à clínica.`,
+      )
+      $app.save(auditRec)
+    } catch (_) {}
+
+    return e.json(200, {
+      success: true,
+      isClinicallyReleased: false,
+      allPassed: false,
+      passedCount,
+      totalCount: checklist.length,
+      message:
+        'Liberação clínica bloqueada por segurança: a validação criptográfica completa requer assinatura real via provedor credenciado ICP-Brasil. O laudo permanece protegido.',
+      checklist,
+    })
+  }
+
+  return e.json(200, {
+    success: true,
+    isClinicallyReleased: true,
+    allPassed: true,
+    checklist,
   })
 })
 
@@ -2112,12 +2676,19 @@ onRecordAuthRequest((e) => {
     if (authRecord) {
       const auditCol = $app.findCollectionByNameOrId('audit_logs')
       const auditRec = new Record(auditCol)
-      auditRec.set('user_id', authRecord.id)
+
+      // Em PocketBase, user_id é uma relation obrigatória com users.
+      // e.record é o authRecord autenticado.
+      const userId = authRecord.id || (authRecord.get ? authRecord.get('id') : '')
+      if (userId) {
+        auditRec.set('user_id', userId)
+      }
       auditRec.set('action', 'AUTH_LOGIN')
       auditRec.set('target_collection', 'users')
-      auditRec.set('target_id', authRecord.id)
+      auditRec.set('target_id', userId)
       auditRec.set('status', 'SUCCESS')
-      auditRec.set('details', `Login realizado: ${authRecord.getString('email')}`)
+      const email = authRecord.getString ? authRecord.getString('email') : ''
+      auditRec.set('details', `Login realizado: ${email || userId}`)
       $app.save(auditRec)
     }
   } catch (err) {

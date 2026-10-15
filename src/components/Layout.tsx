@@ -3,6 +3,7 @@ import {
   Activity,
   ShieldAlert,
   FileText,
+  FileCheck,
   CheckCircle2,
   LogOut,
   Building,
@@ -61,9 +62,20 @@ export default function Layout() {
               }`}
             >
               <FileText className="w-3.5 h-3.5" />
-              <span>Doc. Auditoria</span>
+              <span>Relatório de Auditoria</span>
             </Link>
 
+            <Link
+              to="/homologacao"
+              className={`hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border transition-colors ${
+                location.pathname === '/homologacao'
+                  ? 'bg-indigo-50 border-indigo-300 text-indigo-900 shadow-sm'
+                  : 'bg-slate-100/80 border-slate-200 text-slate-700 hover:bg-slate-200/80'
+              }`}
+            >
+              <FileCheck className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Homologação 4B (PDF & ICP-Brasil)</span>
+            </Link>
             {isAuthenticated && user ? (
               <div className="flex items-center gap-3">
                 {/* Seletor de Organização se tiver mais de uma */}

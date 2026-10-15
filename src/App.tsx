@@ -5,6 +5,7 @@ import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider } from '@/contexts/AuthContext'
 import CentralDashboard from './pages/CentralDashboard'
+import HomologationPage from './pages/HomologationPage'
 import Index from './pages/Index'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
@@ -24,6 +25,8 @@ const App = () => (
             <Route path="/" element={<CentralDashboard />} />
             {/* Relatório técnico original de auditoria preservado em /auditoria */}
             <Route path="/auditoria" element={<Index />} />
+            {/* Relatório da Etapa 4B de Homologação de PDF & Assinatura Digital ICP-Brasil */}
+            <Route path="/homologacao" element={<HomologationPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

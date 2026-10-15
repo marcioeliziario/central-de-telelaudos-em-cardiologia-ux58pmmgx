@@ -373,6 +373,28 @@ export default function Index() {
             Fase: Diagnóstico Concluído
           </Badge>
         </div>
+
+        {/* ACESSO AO RELATÓRIO DA ETAPA 4B */}
+        <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Sparkles className="w-5 h-5 text-indigo-600 shrink-0" />
+            <div>
+              <h5 className="font-bold text-indigo-950 text-sm">
+                Etapa 4B Concluída: Homologação do PDF e Preparação ICP-Brasil
+              </h5>
+              <p className="text-xs text-indigo-800">
+                Acesse o dossiê com os resultados dos 10 testes live, diagnóstico estrutural do
+                gerador PDF 1.7 e arquitetura plugável para VIDaaS e Bird ID.
+              </p>
+            </div>
+          </div>
+          <a
+            href="/homologacao"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold shrink-0 transition-colors shadow-sm"
+          >
+            Acessar Homologação 4B →
+          </a>
+        </div>
       </div>
     </div>
   )

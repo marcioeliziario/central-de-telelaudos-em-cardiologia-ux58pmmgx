@@ -3,6 +3,8 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { AuthProvider } from '@/contexts/AuthContext'
+import CentralDashboard from './pages/CentralDashboard'
 import Index from './pages/Index'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
@@ -12,17 +14,21 @@ import Layout from './components/Layout'
 
 const App = () => (
   <BrowserRouter>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES MUST BE ADDED HERE */}
-        </Route>
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </TooltipProvider>
+    <AuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <Routes>
+          <Route element={<Layout />}>
+            {/* Rota "/" agora é o Painel Central de Telelaudos com autenticação e isolamento multi-tenant */}
+            <Route path="/" element={<CentralDashboard />} />
+            {/* Relatório técnico original de auditoria preservado em /auditoria */}
+            <Route path="/auditoria" element={<Index />} />
+          </Route>
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </TooltipProvider>
+    </AuthProvider>
   </BrowserRouter>
 )
 

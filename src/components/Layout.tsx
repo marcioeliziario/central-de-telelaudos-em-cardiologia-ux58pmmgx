@@ -1,7 +1,22 @@
-import { Outlet } from 'react-router-dom'
-import { Activity, ShieldAlert, FileText, CheckCircle2 } from 'lucide-react'
+import { Outlet, Link, useLocation } from 'react-router-dom'
+import {
+  Activity,
+  ShieldAlert,
+  FileText,
+  CheckCircle2,
+  LogOut,
+  Building,
+  User,
+  ChevronDown,
+} from 'lucide-react'
+import { useAuth } from '@/contexts/AuthContext'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 
 export default function Layout() {
+  const { user, isAuthenticated, currentOrg, currentRole, logout, userOrgs, switchOrg } = useAuth()
+  const location = useLocation()
+
   const generationDate = new Date().toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: 'long',
@@ -14,8 +29,8 @@ export default function Layout() {
       <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm transition-all">
         <div className="max-w-[1240px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
           {/* TÍTULO INSTITUCIONAL */}
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#0E4C92] to-[#00A6A6] flex items-center justify-center text-white shadow-md shadow-blue-900/10 shrink-0">
+          <Link to="/" className="flex items-center gap-3 min-w-0 group">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#0E4C92] to-[#00A6A6] flex items-center justify-center text-white shadow-md shadow-blue-900/10 shrink-0 group-hover:scale-105 transition-transform">
               <Activity className="w-5 h-5" />
             </div>
             <div className="min-w-0">
@@ -28,25 +43,78 @@ export default function Layout() {
                   ECG 12 Derivações
                 </span>
               </div>
-              <h1 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight truncate leading-tight">
+              <h1 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight truncate leading-tight group-hover:text-[#0E4C92] transition-colors">
                 CENTRAL DE TELELAUDOS EM CARDIOLOGIA
               </h1>
             </div>
-          </div>
+          </Link>
 
-          {/* SELO DE STATUS / AUDITORIA */}
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300 shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              <span className="hidden xs:inline">Fase:</span>
-              <span>Auditoria de Viabilidade Técnica</span>
-            </div>
+          {/* ÁREA DE CONTROLE DE SESSÃO / NAVEGAÇÃO */}
+          <div className="flex items-center gap-3 shrink-0">
+            {/* Link para Documentação de Auditoria */}
+            <Link
+              to="/auditoria"
+              className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                location.pathname === '/auditoria'
+                  ? 'bg-blue-50 border-blue-300 text-[#0E4C92]'
+                  : 'bg-slate-100/80 border-slate-200 text-slate-700 hover:bg-slate-200/80'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Doc. Auditoria</span>
+            </Link>
+
+            {isAuthenticated && user ? (
+              <div className="flex items-center gap-3">
+                {/* Seletor de Organização se tiver mais de uma */}
+                {userOrgs.length > 1 && (
+                  <select
+                    value={currentOrg?.id || ''}
+                    onChange={(e) => switchOrg(e.target.value)}
+                    aria-label="Selecionar Organização Ativa"
+                    className="text-xs bg-slate-100 border border-slate-300 rounded px-2 py-1 text-slate-700 cursor-pointer hidden md:block"
+                  >
+                    {userOrgs.map((uo) => (
+                      <option key={uo.id} value={uo.organization_id}>
+                        {uo.expand?.organization_id?.name || 'Organização'}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {/* Usuário logado */}
+                <div className="text-right hidden sm:block">
+                  <div className="text-xs font-semibold text-slate-900 truncate max-w-[140px]">
+                    {user.name || user.email}
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-medium truncate max-w-[140px]">
+                    {currentOrg?.name || 'Central'}
+                  </div>
+                </div>
+
+                <Button
+                  onClick={logout}
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-2.5 text-xs text-slate-600 hover:text-red-700 hover:bg-red-50 hover:border-red-200 border-slate-200 gap-1.5"
+                  title="Sair do sistema"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden xs:inline">Sair</span>
+                </Button>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-sm">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Etapa 1 — Fundação Ativa</span>
+              </div>
+            )}
           </div>
         </div>
       </header>
 
       {/* ÁREA DE CONTEÚDO PRINCIPAL */}
-      <main className="flex-1 w-full max-w-[1240px] mx-auto px-4 sm:px-6 py-8">
+      <main className="flex-1 w-full max-w-[1240px] mx-auto px-4 sm:px-6 py-6">
         <Outlet />
       </main>
 
@@ -56,23 +124,27 @@ export default function Layout() {
           <div className="space-y-1 text-center md:text-left">
             <div className="flex items-center justify-center md:justify-start gap-2 text-white font-semibold">
               <ShieldAlert className="w-4 h-4 text-amber-400" />
-              <span>Aviso Legal e Diretriz Operacional</span>
+              <span>Diretriz Operacional — Etapa 1 (Fundação)</span>
             </div>
             <p className="text-slate-300 text-xs sm:text-sm max-w-2xl leading-relaxed">
-              Nenhum componente do sistema foi construído nesta etapa. Este é um relatório técnico
-              de diagnóstico de viabilidade. Nenhum dado real de paciente foi coletado, armazenado
-              ou processado.
+              Ambiente de validação e testes com dados fictícios. Autenticação, isolamento
+              multi-tenant por organização e API rules operando no Skip Cloud / PocketBase. Módulos
+              de laudo clínico, assinatura digital e integrações serão implementados nas etapas
+              seguintes sob autorização expressa.
             </p>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-4 text-xs text-slate-300 shrink-0">
-            <div className="flex items-center gap-1.5 bg-blue-950/50 px-3 py-1.5 rounded-md border border-blue-800">
+            <Link
+              to="/auditoria"
+              className="flex items-center gap-1.5 bg-blue-950/60 hover:bg-blue-900 px-3 py-1.5 rounded-md border border-blue-800 transition-colors text-white"
+            >
               <FileText className="w-3.5 h-3.5 text-[#00A6A6]" />
-              <span>Emissão: {generationDate}</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-amber-300 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Aguardando autorização para a fase de implementação</span>
+              <span>Relatório Técnico de Auditoria</span>
+            </Link>
+            <div className="flex items-center gap-1.5 text-emerald-300 font-medium">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Etapa 1 Aprovada e Operacional</span>
             </div>
           </div>
         </div>

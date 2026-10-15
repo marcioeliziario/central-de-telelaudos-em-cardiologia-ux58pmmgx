@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T03:17:34.183Z",
+  "generatedAt": "2026-10-15T03:44:58.520Z",
   "collections": [
     {
       "name": "users",
@@ -526,7 +526,14 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["pending", "in_analysis", "reported", "cancelled"]
+          "selectValues": [
+            "pending",
+            "in_analysis",
+            "waiting_signature",
+            "returned",
+            "reported",
+            "cancelled"
+          ]
         },
         {
           "name": "urgency",
@@ -538,7 +545,7 @@
         {
           "name": "exam_file",
           "type": "file",
-          "required": true,
+          "required": false,
           "system": false
         },
         {
@@ -590,6 +597,24 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "return_reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "assigned_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "priority_score",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -683,6 +708,537 @@
       "indexes": [
         "CREATE INDEX idx_audit_action ON audit_logs (action)",
         "CREATE INDEX idx_audit_created ON audit_logs (created DESC)"
+      ]
+    },
+    {
+      "name": "report_templates",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "rhythm",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "p_wave_description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "av_conduction",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "iv_conduction",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "repolarization",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "q_waves",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "conclusion",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_templates_title ON report_templates (title)",
+        "CREATE INDEX idx_templates_category ON report_templates (category)"
+      ]
+    },
+    {
+      "name": "report_drafts",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "exam_request_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "exam_requests"
+        },
+        {
+          "name": "doctor_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "doctors"
+        },
+        {
+          "name": "author_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "version",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "heart_rate",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cardiac_rhythm",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "electrical_axis",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pr_interval_ms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qrs_duration_ms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qt_interval_ms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qtc_interval_ms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "p_wave_description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "av_conduction_alterations",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "iv_conduction_alterations",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "repolarization_alterations",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "q_waves_findings",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "free_text_description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "free_text_conclusion",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "technical_quality_notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_latest",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_drafts_exam ON report_drafts (exam_request_id)",
+        "CREATE INDEX idx_drafts_doctor ON report_drafts (doctor_id)",
+        "CREATE INDEX idx_drafts_version ON report_drafts (exam_request_id, version DESC)"
+      ]
+    },
+    {
+      "name": "ecg_reports",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "exam_request_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "exam_requests"
+        },
+        {
+          "name": "organization_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "organizations"
+        },
+        {
+          "name": "patient_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "patients"
+        },
+        {
+          "name": "doctor_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "doctors"
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["draft", "waiting_signature", "signed_mock_prohibited", "archived"]
+        },
+        {
+          "name": "heart_rate",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cardiac_rhythm",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "electrical_axis",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pr_interval_ms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qrs_duration_ms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qt_interval_ms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qtc_interval_ms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "p_wave_description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "av_conduction_alterations",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "iv_conduction_alterations",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "repolarization_alterations",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "q_waves_findings",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "free_text_description",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "free_text_conclusion",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "technical_quality_notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "has_critical_findings",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_reports_exam_unique ON ecg_reports (exam_request_id)",
+        "CREATE INDEX idx_reports_org ON ecg_reports (organization_id)",
+        "CREATE INDEX idx_reports_doctor ON ecg_reports (doctor_id)",
+        "CREATE INDEX idx_reports_status ON ecg_reports (status)"
+      ]
+    },
+    {
+      "name": "critical_findings",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "exam_request_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "exam_requests"
+        },
+        {
+          "name": "doctor_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "doctors"
+        },
+        {
+          "name": "classification",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "infarto_agudo_supra_st",
+            "bloqueio_av_avancado_total",
+            "taquicardia_ventricular",
+            "bradicardia_grave_sintomatica",
+            "intervalo_qt_muito_prolongado",
+            "pausa_sinusal_prolongada",
+            "outro_achado_critico"
+          ]
+        },
+        {
+          "name": "justification",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "contact_recipient",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "contact_channel",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "telefone_plantao",
+            "telefone_medico_assistente",
+            "telefone_enfermagem",
+            "whatsapp_institucional",
+            "comunicador_clinico_direto"
+          ]
+        },
+        {
+          "name": "contact_timestamp",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "confirmed_by_recipient",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "confirmation_notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "confirmation_timestamp",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "clinical_disclaimer",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_critical_exam ON critical_findings (exam_request_id)",
+        "CREATE INDEX idx_critical_doctor ON critical_findings (doctor_id)"
       ]
     }
   ]

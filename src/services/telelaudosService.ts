@@ -59,9 +59,19 @@ export const doctorService = {
   async create(data: Partial<Doctor>): Promise<Doctor> {
     return await pb.collection('doctors').create<Doctor>(data)
   },
-
   async update(id: string, data: Partial<Doctor>): Promise<Doctor> {
     return await pb.collection('doctors').update<Doctor>(id, data)
+  },
+  async getByUserId(userId: string): Promise<Doctor | null> {
+    try {
+      const res = await pb.collection('doctors').getList<Doctor>(1, 1, {
+        filter: `user_id = '${userId}' && is_active = true`,
+        expand: 'user_id,organization_id',
+      })
+      return res.items.length > 0 ? res.items[0] : null
+    } catch {
+      return null
+    }
   },
 }
 
@@ -118,6 +128,57 @@ export const examService = {
     if (doctorId) payload.assigned_doctor_id = doctorId
     return await pb.collection('exam_requests').update<ExamRequest>(id, payload)
   },
+
+  // Chamada atômica ao backend para assumir exame (com lock no banco)
+  async claimExam(id: string): Promise<{ success: boolean; message: string; exam: ExamRequest }> {
+    return await pb.send(`/backend/v1/exams/${id}/claim`, {
+      method: 'POST',
+    })
+  },
+
+  // Chamada atômica ao backend para devolver exame com justificativa técnica
+  async returnExam(
+    id: string,
+    reason: string,
+  ): Promise<{ success: boolean; message: string; exam: ExamRequest }> {
+    return await pb.send(`/backend/v1/exams/${id}/return`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    })
+  },
+
+  // Salvar rascunho de laudo com versionamento automático no backend
+  async saveDraft(
+    id: string,
+    data: any,
+  ): Promise<{ success: boolean; message: string; draft: any }> {
+    return await pb.send(`/backend/v1/exams/${id}/draft`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  // Concluir elaboração do laudo e avançar para aguardando assinatura (SEM liberação direta)
+  async submitReport(
+    id: string,
+    data: any,
+  ): Promise<{ success: boolean; message: string; report: any }> {
+    return await pb.send(`/backend/v1/exams/${id}/submit-report`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  // Registrar comunicação de achado potencialmente crítico
+  async registerCriticalFinding(
+    id: string,
+    data: any,
+  ): Promise<{ success: boolean; message: string; finding: any }> {
+    return await pb.send(`/backend/v1/exams/${id}/critical-finding`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
 }
 
 export const userOrgService = {
@@ -145,5 +206,69 @@ export const auditService = {
         expand: 'user_id,organization_id',
       })
       .then((res) => res.items)
+  },
+}
+
+export const templateService = {
+  async getAll(): Promise<any[]> {
+    return await pb.collection('report_templates').getFullList({
+      filter: 'is_active = true',
+      sort: 'category,title',
+    })
+  },
+}
+
+export const draftService = {
+  async getLatestForExam(examId: string): Promise<any | null> {
+    try {
+      const drafts = await pb.collection('report_drafts').getList(1, 1, {
+        filter: `exam_request_id = '${examId}' && is_latest = true`,
+        sort: '-version',
+        expand: 'author_id,doctor_id',
+      })
+      return drafts.items.length > 0 ? drafts.items[0] : null
+    } catch {
+      return null
+    }
+  },
+
+  async getHistoryForExam(examId: string): Promise<any[]> {
+    return await pb.collection('report_drafts').getFullList({
+      filter: `exam_request_id = '${examId}'`,
+      sort: '-version',
+      expand: 'author_id,doctor_id',
+    })
+  },
+}
+
+export const reportService = {
+  async getForExam(examId: string): Promise<any | null> {
+    try {
+      const list = await pb.collection('ecg_reports').getList(1, 1, {
+        filter: `exam_request_id = '${examId}'`,
+        expand: 'doctor_id,patient_id,organization_id',
+      })
+      return list.items.length > 0 ? list.items[0] : null
+    } catch {
+      return null
+    }
+  },
+
+  async getAllWaitingSignature(): Promise<any[]> {
+    return await pb.collection('ecg_reports').getFullList({
+      filter: "status = 'waiting_signature'",
+      sort: '-created',
+      expand: 'exam_request_id,doctor_id,patient_id,organization_id',
+    })
+  },
+}
+
+export const criticalFindingService = {
+  async getForExam(examId: string): Promise<any[]> {
+    return await pb.collection('critical_findings').getFullList({
+      filter: `exam_request_id = '${examId}'`,
+      sort: '-created',
+      expand: 'doctor_id',
+    })
   },
 }

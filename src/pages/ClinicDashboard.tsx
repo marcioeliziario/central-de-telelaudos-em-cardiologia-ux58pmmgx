@@ -600,9 +600,11 @@ export default function ClinicDashboard() {
                         </td>
                         <td className="p-3">
                           <Badge variant="secondary">
-                            {ex.status === 'pending' && 'Pendente'}
-                            {ex.status === 'in_analysis' && 'Em Análise'}
-                            {ex.status === 'reported' && 'Laudado'}
+                            {ex.status === 'pending' && 'Na Fila'}
+                            {ex.status === 'in_analysis' && 'Em Elaboração'}
+                            {ex.status === 'waiting_signature' && 'Aguardando Assinatura'}
+                            {ex.status === 'returned' && 'Devolvido Técnico'}
+                            {ex.status === 'reported' && 'Concluído'}
                             {ex.status === 'cancelled' && 'Cancelado'}
                           </Badge>
                         </td>

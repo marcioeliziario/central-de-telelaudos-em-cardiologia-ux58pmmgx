@@ -3921,9 +3921,12 @@ onRecordCreateRequest((e) => {
     if (authRecord) {
       auditRec.set('user_id', authRecord.id)
     }
-    if (e.record.has('organization_id')) {
-      auditRec.set('organization_id', e.record.get('organization_id'))
-    }
+    try {
+      const orgIdVal = e.record.get('organization_id')
+      if (orgIdVal) {
+        auditRec.set('organization_id', orgIdVal)
+      }
+    } catch (_) {}
     auditRec.set('action', 'CREATE')
     auditRec.set('target_collection', collectionName)
     auditRec.set('target_id', e.record.id)
@@ -4121,9 +4124,12 @@ onRecordUpdateRequest((e) => {
     if (authRecord) {
       auditRec.set('user_id', authRecord.id)
     }
-    if (e.record.has('organization_id')) {
-      auditRec.set('organization_id', e.record.get('organization_id'))
-    }
+    try {
+      const orgIdVal = e.record.get('organization_id')
+      if (orgIdVal) {
+        auditRec.set('organization_id', orgIdVal)
+      }
+    } catch (_) {}
     auditRec.set('action', 'UPDATE')
     auditRec.set('target_collection', collectionName)
     auditRec.set('target_id', e.record.id)

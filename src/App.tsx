@@ -7,6 +7,7 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import CentralDashboard from './pages/CentralDashboard'
 import HomologationPage from './pages/HomologationPage'
 import AdminBirdIdTestPage from './pages/AdminBirdIdTestPage'
+import AdminInfrastructureAuditPage from './pages/AdminInfrastructureAuditPage'
 import Index from './pages/Index'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
@@ -30,6 +31,8 @@ const App = () => (
             <Route path="/homologacao" element={<HomologationPage />} />
             {/* Painel Administrativo de Teste de Assinatura ICP-Brasil (Bird ID Pro / Soluti CESS - Etapa 6B) */}
             <Route path="/admin/teste-assinatura" element={<AdminBirdIdTestPage />} />
+            {/* Painel Administrativo de Auditoria de Infraestrutura & Segurança - Etapa 8 */}
+            <Route path="/admin/auditoria-infra" element={<AdminInfrastructureAuditPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

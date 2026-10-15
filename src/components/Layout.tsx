@@ -9,6 +9,7 @@ import {
   Building,
   User,
   ChevronDown,
+  Server,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -88,6 +89,18 @@ export default function Layout() {
               <ShieldAlert className="w-3.5 h-3.5 text-[#0E4C92]" />
               <span>Teste ICP-Brasil (6B)</span>
             </Link>
+
+            <Link
+              to="/admin/auditoria-infra"
+              className={`hidden xl:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-black border transition-colors ${
+                location.pathname === '/admin/auditoria-infra'
+                  ? 'bg-emerald-50 border-emerald-400 text-emerald-900 shadow-sm'
+                  : 'bg-slate-100/80 border-slate-200 text-slate-700 hover:bg-slate-200/80'
+              }`}
+            >
+              <Server className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Auditoria Infra (E8)</span>
+            </Link>
             {isAuthenticated && user ? (
               <div className="flex items-center gap-3">
                 {/* Seletor de Organização se tiver mais de uma */}
@@ -130,7 +143,7 @@ export default function Layout() {
             ) : (
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 shadow-sm">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Etapa 5 — Portal, SLA & Notificações Ativos</span>
+                <span>Etapa 8 — Infraestrutura & Segurança Homologadas</span>
               </div>
             )}
           </div>
@@ -148,13 +161,15 @@ export default function Layout() {
           <div className="space-y-1 text-center md:text-left">
             <div className="flex items-center justify-center md:justify-start gap-2 text-white font-semibold">
               <ShieldAlert className="w-4 h-4 text-amber-400" />
-              <span>Diretriz Operacional — Etapa 5 (Portal de Resultados, SLA e Notificações)</span>
+              <span>
+                Diretriz Operacional — Etapa 8: Auditoria e Fortalecimento da Infraestrutura
+              </span>
             </div>
             <p className="text-slate-300 text-xs sm:text-sm max-w-2xl leading-relaxed">
-              Ambiente de homologação estrita com dados fictícios. Portal de resultados isolado,
-              controle de prazos contratuais (SLA 24h/2h), notificações internas automáticas e
-              downloads seguros com validação criptográfica estrita PAdES. Sem provedores de
-              assinatura ativados e sem publicação para operação clínica real.
+              Ambiente de homologação estrita com dados fictícios. Arquitetura PocketBase/Skip Cloud
+              auditada, imutabilidade de laudos com hash SHA-256, cron nativo de SLA, conformidade
+              técnica com a LGPD e Resolução CD/ANPD nº 19/2024. Sem assinaturas ativadas em
+              produção e sem restaurações destrutivas.
             </p>
           </div>
 
@@ -175,9 +190,18 @@ export default function Layout() {
                 <span>Painel 4B</span>
               </Link>
             </div>{' '}
+            <div className="flex items-center gap-2">
+              <Link
+                to="/admin/auditoria-infra"
+                className="flex items-center gap-1.5 bg-emerald-950/80 hover:bg-emerald-900 px-3 py-1.5 rounded-md border border-emerald-700 transition-colors text-white text-xs font-bold"
+              >
+                <Server className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Auditoria Infra (E8)</span>
+              </Link>
+            </div>
             <div className="flex items-center gap-1.5 text-emerald-300 font-medium">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Etapa 5 Homologada</span>
+              <span>Etapa 8 Homologada</span>
             </div>
           </div>
         </div>

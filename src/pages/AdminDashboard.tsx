@@ -49,6 +49,7 @@ import {
   RotateCcw,
   DollarSign,
   FileCheck,
+  Server,
 } from 'lucide-react'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
 import NotificationsPopover from '@/components/NotificationsPopover'
@@ -164,6 +165,16 @@ export default function AdminDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link to="/admin/auditoria-infra">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-emerald-500 bg-emerald-50/90 text-emerald-900 hover:bg-emerald-100 font-black text-xs h-8 shadow-sm"
+            >
+              <Server className="w-3.5 h-3.5 text-emerald-700" />
+              <span>Auditoria Infra (E8)</span>
+            </Button>
+          </Link>
           <Link to="/admin/teste-assinatura">
             <Button
               variant="outline"
@@ -177,9 +188,9 @@ export default function AdminDashboard() {
           <NotificationsPopover role="admin" />
           <Badge
             variant="outline"
-            className="bg-emerald-50 text-emerald-900 border-emerald-300 py-1 text-xs"
+            className="bg-emerald-50 text-emerald-900 border-emerald-300 py-1 text-xs font-mono"
           >
-            v0.0.12 — Etapa 6B: Homologação ICP-Brasil
+            v0.0.14 — Etapa 8: Auditoria de Infraestrutura
           </Badge>
         </div>
       </div>

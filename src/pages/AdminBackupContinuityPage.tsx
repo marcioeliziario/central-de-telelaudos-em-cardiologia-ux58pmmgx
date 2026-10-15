@@ -23,7 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import pb from '@/lib/pocketbase/client'
-import { SecurityTestRunnerModal } from '@/components/SecurityTestRunnerModal'
+import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
 import {
   BACKUP_AND_DR_PLAN,
   STAGE_10_BACKUP_INVENTORY_REPORT,

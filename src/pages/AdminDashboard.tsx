@@ -50,6 +50,7 @@ import {
   DollarSign,
   FileCheck,
   Server,
+  HardDrive,
 } from 'lucide-react'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
 import { MfaSecurityCard } from '@/components/MfaSecurityCard'

@@ -704,18 +704,31 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
     }
   } catch (_) {}
 
-  // Verificar se o cardiologista responsável possui assinatura manuscrita cadastrada
+  // Determinar o médico associado ao exame ou o médico autenticado
+  let targetDoctorUserId = authRecord.id
+  if (exam.getString('assigned_doctor_id')) {
+    try {
+      const assignedDoc = $app.findRecordById('doctors', exam.getString('assigned_doctor_id'))
+      if (assignedDoc && assignedDoc.getString('user_id')) {
+        targetDoctorUserId = assignedDoc.getString('user_id')
+      }
+    } catch (_) {}
+  }
+
+  // Verificar se o cardiologista responsável possui assinatura manuscrita cadastrada e ativa
   let docSignatureImage = null
+  let signatureRecord = null
   try {
     const sigs = $app.findRecordsByFilter(
       'doctor_signatures',
-      `user_id = '${authRecord.id}' && is_active = true`,
+      `user_id = '${targetDoctorUserId}' && is_active = true`,
       '-created',
       1,
       0,
     )
     if (sigs.length > 0) {
-      docSignatureImage = sigs[0].getString('image_data_uri')
+      signatureRecord = sigs[0]
+      docSignatureImage = signatureRecord.getString('image_data_uri')
     }
   } catch (_) {}
 
@@ -1096,10 +1109,55 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
   ops.push(`40 ${footerY + 25} m 555 ${footerY + 25} l S`)
 
   let hasPreviewSigImage = false
-  if (docSignatureImage) {
-    const sigImgW = 120
-    const sigImgH = 36
-    const sigImgX = 45
+  // No rodapé do laudo, a assinatura manuscrita é estampada sobre a identificação médica
+  // Recuperar binário do storage privado ou da URI
+  let sigBinaryBytes = []
+  if (signatureRecord && signatureRecord.getString('signature_image')) {
+    let fsys = null
+    let reader = null
+    try {
+      fsys = $app.newFilesystem()
+      const fileKey =
+        signatureRecord.baseFilesPath() + '/' + signatureRecord.getString('signature_image')
+      reader = fsys.getReader(fileKey)
+      const rawString = readerToString(reader)
+      if (rawString && rawString.length > 0) {
+        for (let i = 0; i < rawString.length; i++) {
+          sigBinaryBytes.push(rawString.charCodeAt(i) & 0xff)
+        }
+      }
+    } catch (fsErr) {
+      console.log('Aviso ao ler signature_image no storage:', fsErr)
+    } finally {
+      if (reader && typeof reader.close === 'function') reader.close()
+      if (fsys && typeof fsys.close === 'function') fsys.close()
+    }
+  }
+
+  if (sigBinaryBytes.length === 0 && docSignatureImage) {
+    const comma = docSignatureImage.indexOf(',')
+    const b64 = comma !== -1 ? docSignatureImage.substring(comma + 1) : docSignatureImage
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    let clean = b64.replace(/[\r\n\s=]/g, '')
+    while (clean.length % 4 !== 0) clean += 'A'
+    for (let i = 0; i < clean.length; i += 4) {
+      const e1 = chars.indexOf(clean.charAt(i)),
+        e2 = chars.indexOf(clean.charAt(i + 1)),
+        e3 = chars.indexOf(clean.charAt(i + 2)),
+        e4 = chars.indexOf(clean.charAt(i + 3))
+      if (e1 !== -1 && e2 !== -1 && e3 !== -1 && e4 !== -1) {
+        const b24 = (e1 << 18) | (e2 << 12) | (e3 << 6) | e4
+        sigBinaryBytes.push((b24 >> 16) & 0xff)
+        sigBinaryBytes.push((b24 >> 8) & 0xff)
+        sigBinaryBytes.push(b24 & 0xff)
+      }
+    }
+  }
+
+  if (sigBinaryBytes.length > 0) {
+    const sigImgW = 140
+    const sigImgH = 42
+    const sigImgX = Math.round(297.64 - sigImgW / 2)
     const sigImgY = footerY + 3
     ops.push('q')
     ops.push(`${sigImgW} 0 0 ${sigImgH} ${sigImgX} ${sigImgY} cm`)
@@ -1160,17 +1218,12 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
     `8 0 obj\n<< /Title (${escapePdfText('Laudo ECG - ' + docCode)}) /Author (${escapePdfText(doctorName)}) /Creator (Cardiolab Telelaudos SBC 2022 Engine) /Producer (PocketBase / Skip Cloud PDF Generator) /CreationDate (D:${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}Z) >>\nendobj\n`,
   ]
 
-  if (hasPreviewSigImage) {
-    let rawB64 = docSignatureImage
-    if (rawB64.indexOf(',') !== -1) {
-      rawB64 = rawB64.split(',')[1]
-    }
+  if (hasPreviewSigImage && sigBinaryBytes.length > 0) {
     let imgStream = ''
-    try {
-      const binaryString = $security.base64Decode ? $security.base64Decode(rawB64) : ''
-      if (binaryString) imgStream = binaryString
-    } catch (_) {}
-    const imageDef = `9 0 obj\n<< /Type /XObject /Subtype /Image /Width 400 /Height 120 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${imgStream.length} >>\nstream\n${imgStream}\nendstream\nendobj\n`
+    for (let i = 0; i < sigBinaryBytes.length; i++) {
+      imgStream += String.fromCharCode(sigBinaryBytes[i])
+    }
+    const imageDef = `9 0 obj\n<< /Type /XObject /Subtype /Image /Width 489 /Height 227 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${imgStream.length} >>\nstream\n${imgStream}\nendstream\nendobj\n`
     objects.push(imageDef)
   }
 
@@ -1681,6 +1734,73 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
     }
   }
 
+  // Determinar o usuário médico vinculado ao exame ou autenticado
+  let targetDocUserId = authRecord.id
+  if (doctor && doctor.getString('user_id')) {
+    targetDocUserId = doctor.getString('user_id')
+  }
+
+  // Buscar assinatura ativa do médico responsável
+  let docSignatureImage = null
+  let signatureRecord = null
+  try {
+    const sigs = $app.findRecordsByFilter(
+      'doctor_signatures',
+      `user_id = '${targetDocUserId}' && is_active = true`,
+      '-created',
+      1,
+      0,
+    )
+    if (sigs.length > 0) {
+      signatureRecord = sigs[0]
+      docSignatureImage = signatureRecord.getString('image_data_uri')
+    }
+  } catch (_) {}
+
+  // Recuperar binário do storage privado ou da URI
+  let sigBinaryBytes = []
+  if (signatureRecord && signatureRecord.getString('signature_image')) {
+    let fsys = null
+    let reader = null
+    try {
+      fsys = $app.newFilesystem()
+      const fileKey =
+        signatureRecord.baseFilesPath() + '/' + signatureRecord.getString('signature_image')
+      reader = fsys.getReader(fileKey)
+      const rawString = readerToString(reader)
+      if (rawString && rawString.length > 0) {
+        for (let i = 0; i < rawString.length; i++) {
+          sigBinaryBytes.push(rawString.charCodeAt(i) & 0xff)
+        }
+      }
+    } catch (fsErr) {
+      console.log('Aviso ao ler signature_image no storage para prepare-signature:', fsErr)
+    } finally {
+      if (reader && typeof reader.close === 'function') reader.close()
+      if (fsys && typeof fsys.close === 'function') fsys.close()
+    }
+  }
+
+  if (sigBinaryBytes.length === 0 && docSignatureImage) {
+    const comma = docSignatureImage.indexOf(',')
+    const b64 = comma !== -1 ? docSignatureImage.substring(comma + 1) : docSignatureImage
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    let clean = b64.replace(/[\r\n\s=]/g, '')
+    while (clean.length % 4 !== 0) clean += 'A'
+    for (let i = 0; i < clean.length; i += 4) {
+      const e1 = chars.indexOf(clean.charAt(i)),
+        e2 = chars.indexOf(clean.charAt(i + 1)),
+        e3 = chars.indexOf(clean.charAt(i + 2)),
+        e4 = chars.indexOf(clean.charAt(i + 3))
+      if (e1 !== -1 && e2 !== -1 && e3 !== -1 && e4 !== -1) {
+        const b24 = (e1 << 18) | (e2 << 12) | (e3 << 6) | e4
+        sigBinaryBytes.push((b24 >> 16) & 0xff)
+        sigBinaryBytes.push((b24 >> 8) & 0xff)
+        sigBinaryBytes.push(b24 & 0xff)
+      }
+    }
+  }
+
   // Carimbo / Assinatura Manuscrita Digitalizada do Cardiologista no Rodapé
   // Requisito: centralizada sobre o nome do médico, CRM/UF e RQE (quando aplicável).
   // Exibir SOMENTE: imagem da assinatura manuscrita, nome completo do médico, CRM/UF, RQE.
@@ -1692,19 +1812,16 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
   ops.push('0.5 w')
   ops.push(`40 ${footerY + 30} m 555 ${footerY + 30} l S`)
 
-  // Se houver assinatura manuscrita cadastrada, renderizar a estampa gráfica centralizada
+  // Se houver assinatura manuscrita cadastrada com binário, renderizar a estampa gráfica centralizada
   let hasImageXObject = false
-  let imageXObjectContent = ''
-  let imageObjNum = 9
 
-  if (docSignatureImage) {
-    // Dimensões proporcionais da assinatura: largura máxima ~150pt, altura máxima ~45pt
+  if (sigBinaryBytes.length > 0) {
+    // Dimensões proporcionais da assinatura: largura máxima ~140pt, altura máxima ~42pt
     const sigImgW = 140
     const sigImgH = 42
     const sigImgX = Math.round(centerX - sigImgW / 2)
     const sigImgY = 82 // Logo acima do nome do médico
 
-    // Tentar decodificar os bytes da imagem PNG para embutir como XObject ou renderizar vetor
     ops.push('q')
     ops.push(`${sigImgW} 0 0 ${sigImgH} ${sigImgX} ${sigImgY} cm`)
     ops.push('/ImSig Do')
@@ -1757,28 +1874,12 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
     `8 0 obj\n<< /Title (${escapePdfText('Laudo ECG - ' + docCode)}) /Author (${escapePdfText(doctorName)}) /Creator (Cardiolab Telelaudos SBC 2022 Engine) /Producer (PocketBase / Skip Cloud PDF Generator) /CreationDate (D:${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}Z) >>\nendobj\n`,
   ]
 
-  if (hasImageXObject) {
-    // Decodificar PNG base64 da docSignatureImage ou embutir stream de imagem PDF
-    let rawB64 = docSignatureImage
-    if (rawB64.indexOf(',') !== -1) {
-      rawB64 = rawB64.split(',')[1]
-    }
-    // Tentar obter dimensões e dados de imagem; em PDF 1.7 podemos usar DCTDecode (JPEG) ou FlateDecode
-    // Criamos um XObject Image com FlateDecode ou dados brutos
-    let imgW = 400
-    let imgH = 120
+  if (hasImageXObject && sigBinaryBytes.length > 0) {
     let imgStream = ''
-    try {
-      // Se pudermos decodificar os bytes base64
-      const binaryString = $security.base64Decode ? $security.base64Decode(rawB64) : ''
-      if (binaryString && binaryString.length > 0) {
-        imgStream = binaryString
-      }
-    } catch (_) {}
-
-    // Fallback: se binaryString não estiver direta, construímos imagem bitmap compatível com PDF
-    // Usando formato PDF Image padrão
-    const imageDef = `9 0 obj\n<< /Type /XObject /Subtype /Image /Width ${imgW} /Height ${imgH} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${imgStream.length} >>\nstream\n${imgStream}\nendstream\nendobj\n`
+    for (let i = 0; i < sigBinaryBytes.length; i++) {
+      imgStream += String.fromCharCode(sigBinaryBytes[i])
+    }
+    const imageDef = `9 0 obj\n<< /Type /XObject /Subtype /Image /Width 489 /Height 227 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${imgStream.length} >>\nstream\n${imgStream}\nendstream\nendobj\n`
     objects.push(imageDef)
   }
 
@@ -1850,7 +1951,7 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
         qt,
         qtc,
         numericalFields,
-        hasHandwrittenSignature: Boolean(docSignatureImage),
+        hasHandwrittenSignature: Boolean(sigBinaryBytes.length > 0),
         doctorName,
         doctorCrm,
         doctorCrmState,

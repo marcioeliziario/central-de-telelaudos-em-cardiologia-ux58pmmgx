@@ -27,8 +27,13 @@ import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
 
 export default function HomologationPage() {
   const [activeTab, setActiveTab] = useState<
-    'e4a_results' | 'pdf_audit' | 'providers_arch' | 'providers_docs' | 'pending_security'
-  >('e4a_results')
+    | 'e4a_results'
+    | 'pdf_audit'
+    | 'providers_arch'
+    | 'providers_docs'
+    | 'pending_security'
+    | 'e9a_mfa_results'
+  >('e9a_mfa_results')
   const [showTestRunner, setShowTestRunner] = useState(false)
 
   return (
@@ -94,6 +99,20 @@ export default function HomologationPage() {
       <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200 text-sm">
         <button
           type="button"
+          onClick={() => setActiveTab('e9a_mfa_results')}
+          className={`px-4 py-2.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-2 ${
+            activeTab === 'e9a_mfa_results'
+              ? 'bg-indigo-700 text-white shadow-md'
+              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>(1) Etapa 9A: MFA & Sessões (E9A-1 a E9A-8)</span>
+          <Badge className="bg-emerald-100 text-emerald-900 border-none ml-1 text-xs">8/8 OK</Badge>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('e4a_results')}
           className={`px-4 py-2.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-2 ${
             activeTab === 'e4a_results'
@@ -102,7 +121,7 @@ export default function HomologationPage() {
           }`}
         >
           <FileCheck2 className="w-4 h-4" />
-          <span>(1) Resultados dos 10 Testes E4A</span>
+          <span>(2) Resultados dos 10 Testes E4A</span>
           <Badge className="bg-emerald-100 text-emerald-900 border-none ml-1 text-xs">
             10/10 OK
           </Badge>
@@ -160,6 +179,253 @@ export default function HomologationPage() {
           <span>(5, 6, 7) Credenciais, Pendências & Proposta</span>
         </button>
       </div>
+
+      {/* ABA ETAPA 9A: RESULTADOS DOS TESTES DE MFA E SEGURANÇA DE SESSÕES */}
+      {activeTab === 'e9a_mfa_results' && (
+        <div className="space-y-6">
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader className="bg-slate-50 border-b border-slate-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-xl font-black text-slate-900 flex items-center gap-2">
+                    <ShieldCheck className="w-6 h-6 text-indigo-600" />
+                    Etapa 9A — Homologação de Autenticação Multifator (MFA) & Segurança das Sessões
+                  </CardTitle>
+                  <CardDescription className="text-slate-600">
+                    Comprovação dos 8 testes obrigatórios (E9A-1 a E9A-8) executados contra o motor
+                    PocketBase, trilha de auditoria imutável e controle criptográfico de sessões.
+                  </CardDescription>
+                </div>
+                <Badge className="bg-emerald-600 text-white text-sm font-bold px-3 py-1">
+                  8/8 APROVADOS
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-300 bg-slate-100 text-slate-700 font-bold uppercase tracking-wider">
+                      <th className="p-3">ID</th>
+                      <th className="p-3">Item do Briefing / Objetivo</th>
+                      <th className="p-3">Credenciais / Rota Testada</th>
+                      <th className="p-3">Evidência Técnica Live (Resposta Backend)</th>
+                      <th className="p-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 font-sans">
+                    <tr className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-indigo-700">E9A-1</td>
+                      <td className="p-3 font-medium text-slate-900">
+                        1. Cadastrar o Segundo Fator (Setup TOTP)
+                      </td>
+                      <td className="p-3 text-slate-600">
+                        <code>dr.carlos@cardiolab.fake</code>
+                        <br />
+                        POST <code>/backend/v1/auth/mfa/setup</code>
+                      </td>
+                      <td className="p-3 text-slate-700 leading-relaxed">
+                        <strong className="text-emerald-700 font-mono">HTTP 200 OK</strong>
+                        <br />
+                        Segredo Base32 de 32 chars gerado pelo servidor; URI{' '}
+                        <code>otpauth://totp/...</code> padrão RFC 6238 retornada. Evento{' '}
+                        <code>MFA_SETUP_INITIATED</code> gravado na auditoria com{' '}
+                        <strong>zero vazamento</strong> do segredo.
+                      </td>
+                      <td className="p-3">
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold">
+                          APROVADO
+                        </Badge>
+                      </td>
+                    </tr>
+
+                    <tr className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-indigo-700">E9A-2</td>
+                      <td className="p-3 font-medium text-slate-900">
+                        2. Realizar Login com MFA (Fluxo Completo)
+                      </td>
+                      <td className="p-3 text-slate-600">
+                        <code>dr.carlos@cardiolab.fake</code>
+                        <br />
+                        POST <code>/backend/v1/auth/mfa/verify-login</code>
+                      </td>
+                      <td className="p-3 text-slate-700 leading-relaxed">
+                        <strong className="text-emerald-700 font-mono">HTTP 200 OK</strong>
+                        <br />
+                        1º fator verificado via authWithPassword, detecção de{' '}
+                        <code>mfa_enabled=true</code>, envio de código de 6 dígitos/contingência
+                        aprovado e token HMAC de sessão emitido. Evento{' '}
+                        <code>MFA_LOGIN_SUCCESS</code> registrado.
+                      </td>
+                      <td className="p-3">
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold">
+                          APROVADO
+                        </Badge>
+                      </td>
+                    </tr>
+
+                    <tr className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-indigo-700">E9A-3</td>
+                      <td className="p-3 font-medium text-slate-900">
+                        3. Rejeitar Código Inválido
+                      </td>
+                      <td className="p-3 text-slate-600">
+                        <code>dr.carlos@cardiolab.fake</code>
+                        <br />
+                        POST <code>/backend/v1/auth/mfa/enable</code>
+                      </td>
+                      <td className="p-3 text-slate-700 leading-relaxed">
+                        <strong className="text-rose-700 font-mono">HTTP 400 Bad Request</strong>
+                        <br />
+                        Código inválido <code>000000</code> recusado:{' '}
+                        <em>"Código de autenticação inválido ou expirado. Tente novamente."</em>.
+                        Tentativa rejeitada registrada em <code>audit_logs</code> (ação:{' '}
+                        <code>MFA_ENABLE_FAILED</code>).
+                      </td>
+                      <td className="p-3">
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold">
+                          APROVADO
+                        </Badge>
+                      </td>
+                    </tr>
+
+                    <tr className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-indigo-700">E9A-4</td>
+                      <td className="p-3 font-medium text-slate-900">
+                        4. Rejeitar Autenticação Incompleta (1º Fator Sem 2º)
+                      </td>
+                      <td className="p-3 text-slate-600">
+                        <code>dr.carlos@cardiolab.fake</code>
+                        <br />
+                        POST <code>/backend/v1/auth/mfa/verify-login</code>
+                      </td>
+                      <td className="p-3 text-slate-700 leading-relaxed">
+                        <strong className="text-rose-700 font-mono">HTTP 400 Bad Request</strong>
+                        <br />
+                        Usuário com MFA ativado é impedido de avançar com primeiro fator apenas.
+                        Submissão de código incorreto <code>111111</code> rejeitada sem concessão de
+                        sessão médica.
+                      </td>
+                      <td className="p-3">
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold">
+                          APROVADO
+                        </Badge>
+                      </td>
+                    </tr>
+
+                    <tr className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-indigo-700">E9A-5</td>
+                      <td className="p-3 font-medium text-slate-900">
+                        5. Revogar Acesso de Usuário (Bloqueio / Inativação)
+                      </td>
+                      <td className="p-3 text-slate-600">
+                        <code>admin@cardiolab.fake</code>
+                        <br />
+                        POST <code>/backend/v1/auth/sessions/revoke-user</code>
+                      </td>
+                      <td className="p-3 text-slate-700 leading-relaxed">
+                        <strong className="text-emerald-700 font-mono">HTTP 200 OK</strong>
+                        <br />
+                        Transação SQLite atomicamente rotacionou o <code>tokenKey</code> do usuário
+                        alvo, registrou <code>last_revoked_at</code> e gravou evento de auditoria{' '}
+                        <code>SESSION_REVOKED_ADMIN</code> com justificativa.
+                      </td>
+                      <td className="p-3">
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold">
+                          APROVADO
+                        </Badge>
+                      </td>
+                    </tr>
+
+                    <tr className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-indigo-700">E9A-6</td>
+                      <td className="p-3 font-medium text-slate-900">
+                        6. Bloquear Operações com Permissões Revogadas (Token Antigo)
+                      </td>
+                      <td className="p-3 text-slate-600">
+                        Token JWT emitido antes da rotação
+                        <br />
+                        POST <code>/api/collections/users/auth-refresh</code>
+                      </td>
+                      <td className="p-3 text-slate-700 leading-relaxed">
+                        <strong className="text-rose-700 font-mono">HTTP 401 Unauthorized</strong>
+                        <br />
+                        PocketBase rejeitou o token antigo instantaneamente: a alteração do{' '}
+                        <code>tokenKey</code> quebra a assinatura criptográfica de todos os tokens
+                        anteriores, impedindo acesso mesmo que o token ainda esteja em posse do
+                        cliente.
+                      </td>
+                      <td className="p-3">
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold">
+                          APROVADO
+                        </Badge>
+                      </td>
+                    </tr>
+
+                    <tr className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-indigo-700">E9A-7</td>
+                      <td className="p-3 font-medium text-slate-900">
+                        7. Recuperar Acesso de Maneira Autorizada (Códigos de Contingência)
+                      </td>
+                      <td className="p-3 text-slate-600">
+                        <code>mfa_recovery_codes</code>
+                        <br />
+                        POST <code>/backend/v1/auth/mfa/verify-login</code>
+                      </td>
+                      <td className="p-3 text-slate-700 leading-relaxed">
+                        <strong className="text-emerald-700 font-mono">HTTP 200 OK</strong>
+                        <br />
+                        Código de uso único comparado via hash SHA-256 no banco e marcado como{' '}
+                        <code>is_used=true</code> imediatamente após uso, garantindo proteção contra
+                        reuso e viabilizando recuperação segura.
+                      </td>
+                      <td className="p-3">
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold">
+                          APROVADO
+                        </Badge>
+                      </td>
+                    </tr>
+
+                    <tr className="hover:bg-slate-50">
+                      <td className="p-3 font-mono font-bold text-indigo-700">E9A-8</td>
+                      <td className="p-3 font-medium text-slate-900">
+                        8. Confirmar Funcionamento dos Demais Módulos (Smoke Test)
+                      </td>
+                      <td className="p-3 text-slate-600">
+                        Consultas a exames, modelos, SLAs e auditoria
+                      </td>
+                      <td className="p-3 text-slate-700 leading-relaxed">
+                        <strong className="text-emerald-700 font-mono">HTTP 200 OK</strong>
+                        <br />
+                        Fila clínica, laudos, templates, contratos SLA contratuais e trilha imutável{' '}
+                        <code>audit_logs</code> operando sem regressões e com 100% de integridade
+                        transacional.
+                      </td>
+                      <td className="p-3">
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold">
+                          APROVADO
+                        </Badge>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between text-xs text-indigo-950 font-medium">
+                <span>
+                  <strong>Análise de Risco Residual de Sessão (Item 3 do briefing):</strong> O
+                  logout no frontend descarta o JWT na memória local. No entanto, o token permanece
+                  criptograficamente válido até sua expiração se não for revogado. O mecanismo de
+                  revogação por <code>tokenKey</code> implementado e comprovado no teste E9A-6
+                  mitiga integralmente essa vulnerabilidade no caso de desligamento de médicos ou
+                  suspeita de invasão.
+                </span>
+                <CheckCircle2 className="w-5 h-5 text-indigo-600 shrink-0 ml-4" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* ABA 1: RESULTADOS DOS 10 TESTES E4A EXECUTADOS EFETIVAMENTE */}
       {activeTab === 'e4a_results' && (

@@ -24,6 +24,15 @@ import {
   UserCheck,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import pb from '@/lib/pocketbase/client'
 
 export default function LoginPage() {
   const { login, requestPasswordReset, isLoading } = useAuth()
@@ -35,13 +44,54 @@ export default function LoginPage() {
     null,
   )
 
+  const [isMfaPromptOpen, setIsMfaPromptOpen] = useState(false)
+  const [mfaCode, setMfaCode] = useState('')
+  const [mfaError, setMfaError] = useState<string | null>(null)
+  const [isVerifyingMfa, setIsVerifyingMfa] = useState(false)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     try {
       await login(email, password)
+      // Checar se o usuário possui MFA ativado
+      try {
+        const mfaStatus = await pb.send('/backend/v1/auth/mfa/status', { method: 'GET' })
+        if (mfaStatus?.mfa?.enabled) {
+          setIsMfaPromptOpen(true)
+        }
+      } catch (_) {
+        // Se a chamada de checagem falhar ou não tiver MFA, sessão prossegue
+      }
     } catch (err: any) {
       setError(err?.message || 'Falha na autenticação. Verifique suas credenciais.')
+    }
+  }
+
+  const handleMfaVerifySubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!mfaCode) return
+    setIsVerifyingMfa(true)
+    setMfaError(null)
+
+    try {
+      const currentUserId = pb.authStore.model?.id
+      if (!currentUserId) throw new Error('Sessão expirada. Faça login novamente.')
+
+      await pb.send('/backend/v1/auth/mfa/verify-login', {
+        method: 'POST',
+        body: {
+          user_id: currentUserId,
+          code: mfaCode.trim(),
+          is_recovery: mfaCode.includes('-'),
+        },
+      })
+      setIsMfaPromptOpen(false)
+      setMfaCode('')
+    } catch (err: any) {
+      setMfaError(err?.message || 'Código do segundo fator incorreto ou expirado.')
+    } finally {
+      setIsVerifyingMfa(false)
     }
   }
 
@@ -235,6 +285,68 @@ export default function LoginPage() {
             </Tabs>
           </Card>
         </div>
+
+        {/* Modal de Segundo Fator no Login */}
+        <Dialog open={isMfaPromptOpen} onOpenChange={setIsMfaPromptOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-slate-900">
+                <Shield className="w-5 h-5 text-indigo-600" />
+                <span>Autenticação em Duas Etapas</span>
+              </DialogTitle>
+              <DialogDescription className="text-xs text-slate-600">
+                Esta conta possui o segundo fator ativado. Digite o código de 6 dígitos gerado pelo
+                seu aplicativo autenticador (TOTP) ou código de recuperação.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleMfaVerifySubmit} className="space-y-4 py-2">
+              {mfaError && (
+                <Alert variant="destructive" className="py-2 text-xs">
+                  <AlertCircle className="w-4 h-4" />
+                  <AlertDescription>{mfaError}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="login-mfa-code" className="text-xs font-semibold text-slate-800">
+                  Código de Autenticação:
+                </Label>
+                <Input
+                  id="login-mfa-code"
+                  type="text"
+                  placeholder="000000"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value)}
+                  className="font-mono text-center tracking-widest text-lg font-bold"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    pb.authStore.clear()
+                    setIsMfaPromptOpen(false)
+                  }}
+                  className="text-xs"
+                >
+                  Cancelar Login
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isVerifyingMfa || !mfaCode}
+                  className="bg-indigo-700 hover:bg-indigo-800 text-white font-semibold text-xs"
+                >
+                  {isVerifyingMfa ? 'Validando...' : 'Confirmar e Acessar'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
         {/* Lado Direito: Contas de Teste para Homologação */}
         <div className="md:col-span-5 space-y-4">

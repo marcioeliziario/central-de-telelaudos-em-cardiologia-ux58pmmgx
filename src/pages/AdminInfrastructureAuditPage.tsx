@@ -74,7 +74,7 @@ export default function AdminInfrastructureAuditPage() {
                 Auditoria Técnica & Fortalecimento de Infraestrutura
               </span>
               <Badge className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-mono">
-                Versão 0.0.14
+                Versão 0.0.15
               </Badge>
               <Badge className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 text-xs">
                 Resolução CD/ANPD nº 19/2024

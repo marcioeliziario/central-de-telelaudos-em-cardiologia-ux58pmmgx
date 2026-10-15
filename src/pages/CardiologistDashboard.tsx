@@ -54,6 +54,7 @@ import {
 import EcgViewer from '@/components/EcgViewer'
 import ReportEditor from '@/components/ReportEditor'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
+import { MfaSecurityCard } from '@/components/MfaSecurityCard'
 import NotificationsPopover from '@/components/NotificationsPopover'
 import { BirdIdSigningModal } from '@/components/BirdIdSigningModal'
 
@@ -444,6 +445,9 @@ export function CardiologistDashboard() {
           </Button>
         </div>
       </div>
+
+      {/* Painel Integrado de MFA do Médico Laudador (Etapa 9A) */}
+      <MfaSecurityCard />
 
       {/* Cartões de Contagem de Exames */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

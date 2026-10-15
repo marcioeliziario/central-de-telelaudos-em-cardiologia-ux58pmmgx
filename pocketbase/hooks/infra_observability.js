@@ -140,12 +140,36 @@ routerAdd('GET', '/backend/v1/infra/health', (e) => {
     }))
   } catch (_) {}
 
+  // Diagnóstico de versão e capacidades nativas de autenticação do PocketBase
+  let authEngineDiag = {
+    pocketbaseDeclaredVersion: 'v0.36 (Skip Cloud Managed)',
+    authCollectionName: 'users',
+    tokenDurationSecs: 604800, // 7 dias padrão
+    nativeOtpEmailSupported: false,
+    nativeTotpSupported: false,
+    tokenKeyRotationSupported: true,
+  }
+
+  try {
+    const usersCol = $app.findCollectionByNameOrId('users')
+    authEngineDiag.authTokenDuration = usersCol.authTokenDuration || 604800
+    authEngineDiag.passwordAuthEnabled = usersCol.passwordAuth
+      ? usersCol.passwordAuth.enabled
+      : true
+    authEngineDiag.mfaRule = usersCol.mfa ? usersCol.mfa.rule : null
+    authEngineDiag.mfaEnabled = usersCol.mfa ? usersCol.mfa.enabled : false
+    authEngineDiag.otpEnabled = usersCol.otp ? usersCol.otp.enabled : false
+  } catch (colErr) {
+    authEngineDiag.errorReadingCol = String(colErr)
+  }
+
   return e.json(200, {
     success: true,
     status: 'HEALTHY',
-    version: '0.0.14',
-    stage: 'Etapa 8: Auditoria e Fortalecimento da Infraestrutura',
+    version: '0.0.15',
+    stage: 'Etapa 9A: Autenticação Multifator e Segurança das Sessões',
     timestamp: now.toISOString(),
+    authEngineDiag,
     runtime: {
       backendEngine: 'PocketBase (Go/Goja JSVM)',
       platform: 'Skip Cloud Managed Runtime',
@@ -172,6 +196,8 @@ routerAdd('GET', '/backend/v1/infra/health', (e) => {
         lockedClosingTamperingProtection: 'ATIVO (is_locked=true impede UPDATE direto)',
         hmacTokenRevalidation:
           'ATIVO (Token 5m HMAC-SHA256 com revalidação de usuário e liberação)',
+        mfaPolicyByRole: 'CONFIGURÁVEL (default opcional, proteção admin/cardiologistas)',
+        tokenKeySessionRevocation: 'ATIVO (invalidação criptográfica instantânea por tokenKey)',
       },
     },
     metrics: {

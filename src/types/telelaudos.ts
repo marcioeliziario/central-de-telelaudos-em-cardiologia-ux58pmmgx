@@ -321,6 +321,20 @@ export interface AuthUser {
   phone?: string
   avatar?: string
   is_active?: boolean
+  mfa_enabled?: boolean
+  mfa_enforced?: boolean
+  mfa_enforced_role?: 'none' | 'admin' | 'cardiologist' | 'all'
+  mfa_verified_at?: string
+  last_revoked_at?: string
+  created: string
+}
+
+export interface MfaRecoveryCode {
+  id: string
+  user_id: string
+  code_hash_sha256: string
+  is_used: boolean
+  used_at?: string
   created: string
 }
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T17:10:19.601Z",
+  "generatedAt": "2026-10-15T20:08:43.523Z",
   "collections": [
     {
       "name": "users",
@@ -47,6 +47,37 @@
         {
           "name": "is_active",
           "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mfa_enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mfa_enforced",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mfa_enforced_role",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["none", "admin", "cardiologist", "all"]
+        },
+        {
+          "name": "mfa_verified_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "last_revoked_at",
+          "type": "date",
           "required": false,
           "system": false
         }
@@ -2505,6 +2536,62 @@
       "indexes": [
         "CREATE INDEX idx_adj_closing ON billing_adjustments (monthly_closing_id)",
         "CREATE INDEX idx_adj_client ON billing_adjustments (client_org_id)"
+      ]
+    },
+    {
+      "name": "mfa_recovery_codes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && user_id = @request.auth.id",
+        "create": "@request.auth.id != ''",
+        "update": null,
+        "delete": "@request.auth.id != '' && user_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "code_hash_sha256",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "is_used",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "used_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_recov_user ON mfa_recovery_codes (user_id)",
+        "CREATE INDEX idx_recov_hash ON mfa_recovery_codes (code_hash_sha256)"
       ]
     }
   ]

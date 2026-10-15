@@ -52,6 +52,8 @@ import {
   Server,
 } from 'lucide-react'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
+import { MfaSecurityCard } from '@/components/MfaSecurityCard'
+import { ShieldCheck } from 'lucide-react'
 import NotificationsPopover from '@/components/NotificationsPopover'
 import FinancialManagementModule from '@/components/FinancialManagementModule'
 
@@ -190,14 +192,14 @@ export default function AdminDashboard() {
             variant="outline"
             className="bg-emerald-50 text-emerald-900 border-emerald-300 py-1 text-xs font-mono"
           >
-            v0.0.14 — Etapa 8: Auditoria de Infraestrutura
+            v0.0.15 — Etapa 9A: Autenticação Multifator & Sessões
           </Badge>
         </div>
       </div>
 
       {/* Tabs de Navegação do Administrador */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-3 sm:grid-cols-9 w-full h-auto p-1 bg-slate-200/80 gap-1 text-xs">
+        <TabsList className="grid grid-cols-3 sm:grid-cols-10 w-full h-auto p-1 bg-slate-200/80 gap-1 text-xs">
           <TabsTrigger value="overview" className="py-2">
             Geral
           </TabsTrigger>
@@ -210,6 +212,13 @@ export default function AdminDashboard() {
           </TabsTrigger>
           <TabsTrigger value="sla" className="py-2 font-bold text-[#0E4C92]">
             Contratos SLA
+          </TabsTrigger>
+          <TabsTrigger
+            value="mfa_security"
+            className="py-2 font-bold text-indigo-900 bg-indigo-100/60"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 mr-1 text-indigo-700 inline" />
+            MFA & Sessões
           </TabsTrigger>
           <TabsTrigger value="clinics" className="py-2">
             Clínicas
@@ -230,6 +239,11 @@ export default function AdminDashboard() {
             Auditoria
           </TabsTrigger>
         </TabsList>
+
+        {/* TAB SEGURANÇA MFA E SESSÕES (ETAPA 9A) */}
+        <TabsContent value="mfa_security" className="space-y-4 pt-4">
+          <MfaSecurityCard />
+        </TabsContent>
 
         {/* TAB FINANCEIRA: GESTÃO DE CONTRATOS, PREÇOS E FECHAMENTOS (ETAPA 7) */}
         <TabsContent value="finance" className="space-y-4 pt-4">

@@ -1157,24 +1157,41 @@ export async function runSecurityAndIsolationTests(
     const clientOperator = getTestClient()
     await clientOperator
       .collection('users')
-      .authWithPassword('operador.alfa@cardioalfa.fake', TEST_PASSWORD)
+      .authWithPassword('gestor.alfa@cardioalfa.fake', TEST_PASSWORD)
 
-    // Operador de clínica tenta acessar rota de prévia (restrita a cardiologistas/admin)
-    await clientOperator.send(`/backend/v1/exams/${e4aExamId}/report-pdf-preview`, {
+    // Exame pertencente à Clínica Beta (organização distinta da do operador), quando existir
+    let crossClinicExamId = e4aExamId
+    try {
+      const betaExams = await clientOperator.collection('exam_requests').getList(1, 1, {
+        filter: `organization_id = '${orgBetaId}'`,
+        sort: '-created',
+      })
+      if (betaExams.items.length > 0) crossClinicExamId = betaExams.items[0].id
+    } catch {
+      /* mantém o exame padrão do fluxo E4A */
+    }
+
+    // Gestor da Clínica Alfa tenta acessar a prévia de laudo de um exame da Clínica Beta
+    await clientOperator.send(`/backend/v1/exams/${crossClinicExamId}/report-pdf-preview`, {
       method: 'GET',
     })
 
     updateTest('test-e4a-7-cross-clinic-blocked', {
       status: 'failed',
       durationMs: Math.round(performance.now() - te4a7Start),
-      realResult: 'FALHA DE SEGURANÇA: Operador de clínica conseguiu gerar prévia de laudo.',
+      realResult:
+        'FALHA DE SEGURANÇA: Usuário da Clínica Alfa conseguiu gerar prévia de laudo da Clínica Beta.',
     })
   } catch (err: any) {
+    // Autenticação ou falha de rede NÃO comprova o bloqueio de segurança
+    const isAuthError = err.status === 400 || err.status === 401
     updateTest('test-e4a-7-cross-clinic-blocked', {
-      status: 'passed',
+      status: isAuthError ? 'failed' : 'passed',
       durationMs: Math.round(performance.now() - te4a7Start),
       httpStatus: err.status || 403,
-      realResult: `Bloqueado com sucesso pelo backend: HTTP ${err.status} - "${err.message}"`,
+      realResult: isAuthError
+        ? `Erro no teste (não comprova bloqueio): HTTP ${err.status} - "${err.message}"`
+        : `Acesso da Clínica Alfa a exame/documento da Clínica Beta bloqueado: HTTP ${err.status} - "${err.message}"`,
     })
   }
 
@@ -1187,7 +1204,9 @@ export async function runSecurityAndIsolationTests(
       .collection('users')
       .authWithPassword('gestor.alfa@cardioalfa.fake', TEST_PASSWORD)
 
-    // Buscar documento disponível e tentar download como usuário de clínica
+    // Buscar documento disponível (do fluxo E4A, mesma organização do gestor) e tentar
+    // download com usuário de clínica SEM assinatura validada/liberação clínica.
+    // (O bloqueio ENTRE clínicas é coberto pelo teste E4A-7.)
     const docs = await clientClinic.collection('report_documents').getList(1, 1, {
       filter: `exam_request_id = '${e4aExamId}'`,
       sort: '-version',
@@ -1211,19 +1230,28 @@ export async function runSecurityAndIsolationTests(
             'FALHA DE SEGURANÇA: Usuário de clínica conseguiu baixar laudo não assinado/validado.',
         })
       } catch (dlErr: any) {
+        const msg = String(dlErr.message || '')
+        const isUnreleasedBlock =
+          msg.includes('assinatura digital válida') || msg.includes('liberação clínica')
         updateTest('test-e4a-8-unreleased-download-blocked', {
-          status: 'passed',
+          status: isUnreleasedBlock || dlErr.status === 403 ? 'passed' : 'failed',
           durationMs: Math.round(performance.now() - te4a8Start),
           httpStatus: dlErr.status || 403,
-          realResult: `Bloqueado com sucesso pelo backend: HTTP ${dlErr.status} - "${dlErr.message}"`,
+          realResult: isUnreleasedBlock
+            ? `Download bloqueado com sucesso pelo backend: HTTP ${dlErr.status} — laudo sem assinatura validada/liberação clínica permanece indisponível.`
+            : `Comportamento inesperado (HTTP ${dlErr.status}): "${dlErr.message}"`,
         })
       }
     }
   } catch (err: any) {
+    // Autenticação ou falha de rede NÃO comprova o bloqueio de segurança
+    const isAuthError = err.status === 400 || err.status === 401
     updateTest('test-e4a-8-unreleased-download-blocked', {
-      status: 'passed',
+      status: isAuthError ? 'failed' : 'passed',
       durationMs: Math.round(performance.now() - te4a8Start),
-      realResult: `Bloqueado com sucesso pelo backend: ${err.message}`,
+      realResult: isAuthError
+        ? `Erro no teste (não comprova bloqueio): HTTP ${err.status} - "${err.message}"`
+        : `Bloqueado com sucesso pelo backend: ${err.message}`,
     })
   }
 

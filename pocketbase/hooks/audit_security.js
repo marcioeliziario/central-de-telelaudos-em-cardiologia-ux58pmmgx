@@ -797,12 +797,14 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
   const examDate = exam.getString('exam_date')
     ? new Date(exam.getString('exam_date')).toLocaleDateString('pt-BR')
     : new Date(exam.getString('created')).toLocaleDateString('pt-BR')
-  const doctorName = doctor
-    ? doctor.getString('notes') || 'Carlos Silveira'
-    : authRecord.getString('name') || 'Cardiologista'
-  const doctorCrm = doctor ? doctor.getString('crm') : '123456'
+  const doctorName =
+    authRecord.getString('name') || (doctor ? doctor.getString('notes') : '') || 'Cardiologista'
+  const doctorCrm = doctor ? doctor.getString('crm') : ''
   const doctorCrmState = doctor ? doctor.getString('crm_state') : 'SP'
-  const doctorRqe = doctor ? doctor.getString('rqe') : '78901'
+  const doctorRqe = doctor ? doctor.getString('rqe') : ''
+  const doctorCrmLine = doctorCrm
+    ? 'CRM: ' + doctorCrm + '/' + doctorCrmState + (doctorRqe ? '  •  RQE: ' + doctorRqe : '')
+    : 'Registro profissional não informado na solicitação'
   const desc =
     reportData.getString('free_text_description') ||
     'Traçado dentro dos limites da normalidade para a faixa etária.'
@@ -1054,9 +1056,7 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
   ops.push('BT')
   ops.push('/F1 8.5 Tf')
   ops.push(`45 ${footerY} Td`)
-  ops.push(
-    `(${escapePdfText('CRM: ' + doctorCrm + '/' + doctorCrmState + (doctorRqe ? '  •  RQE: ' + doctorRqe : '') + '  •  Especialidade: Cardiologia')}) Tj`,
-  )
+  ops.push(`(${escapePdfText(doctorCrmLine + '  •  Especialidade: Cardiologia')}) Tj`)
   ops.push('ET')
 
   ops.push('BT')
@@ -1376,12 +1376,14 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
   const examDate = exam.getString('exam_date')
     ? new Date(exam.getString('exam_date')).toLocaleDateString('pt-BR')
     : new Date(exam.getString('created')).toLocaleDateString('pt-BR')
-  const doctorName = doctor
-    ? doctor.getString('notes') || 'Carlos Silveira'
-    : authRecord.getString('name') || 'Cardiologista'
-  const doctorCrm = doctor ? doctor.getString('crm') : '123456'
+  const doctorName =
+    authRecord.getString('name') || (doctor ? doctor.getString('notes') : '') || 'Cardiologista'
+  const doctorCrm = doctor ? doctor.getString('crm') : ''
   const doctorCrmState = doctor ? doctor.getString('crm_state') : 'SP'
-  const doctorRqe = doctor ? doctor.getString('rqe') : '78901'
+  const doctorRqe = doctor ? doctor.getString('rqe') : ''
+  const doctorCrmLine = doctorCrm
+    ? 'CRM: ' + doctorCrm + '/' + doctorCrmState + (doctorRqe ? '  •  RQE: ' + doctorRqe : '')
+    : 'Registro profissional não informado na solicitação'
 
   let ops = []
   ops.push('0.05 0.30 0.57 rg')

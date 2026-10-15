@@ -951,6 +951,80 @@ export default function HomologationPage() {
                 </ol>
               </CardContent>
             </Card>
+
+            {/* ETAPA 6A: DETALHAMENTO TÉCNICO DO CONECTOR BIRD ID PRO */}
+            <Card className="border-slate-200 shadow-sm md:col-span-2">
+              <CardHeader className="bg-sky-50/50 border-b border-sky-100">
+                <CardTitle className="text-base font-bold text-[#0E4C92] flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-[#0E4C92]" />
+                    <span>
+                      (8) Etapa 6A — Conector Bird ID Pro da Soluti (Especificação Oficial)
+                    </span>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="bg-amber-50 text-amber-800 border-amber-300 text-xs"
+                  >
+                    CONECTOR FUNCIONAL EM MODO STANDBY
+                  </Badge>
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-600">
+                  Implementação oficial orientada pela documentação CESS Soluti
+                  (docs.vaultid.com.br/workspace/cess)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3 text-xs text-slate-700 leading-relaxed">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <strong className="text-slate-900 block font-semibold">
+                      Fluxo Técnico Mapeado:
+                    </strong>
+                    <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-600">
+                      <li>
+                        <strong>Identificador TCN:</strong> Transações assíncronas identificadas por
+                        TCN único no CESS.
+                      </li>
+                      <li>
+                        <strong>PAdES PDFSignature:</strong> Assinatura PAdES SHA-256 sobre PDF 1.7
+                        sem modificações posteriores.
+                      </li>
+                      <li>
+                        <strong>Proteção Anti-Replay:</strong> Nonce criptográfico de 32 bytes
+                        gerado por transação e verificado em callbacks.
+                      </li>
+                      <li>
+                        <strong>Segurança Absoluta:</strong> PIN, OTP, senhas e chaves privadas
+                        nunca são solicitados nem persistidos no banco.
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="space-y-2">
+                    <strong className="text-slate-900 block font-semibold">
+                      Diagnóstico de Infraestrutura (Item 10):
+                    </strong>
+                    <div className="p-2.5 bg-slate-50 rounded border border-slate-200 text-[11px] text-slate-600">
+                      O backend Skip Cloud opera em ambiente gerenciado (Go/JSVM) sem suporte a
+                      containers Docker secundários. A integração técnica consome a API REST CESS
+                      via HTTPS, recomendando-se: (a) instância Bird ID Pro gerenciada em nuvem pela
+                      Soluti ou (b) container CESS dedicado hospedado na infraestrutura hospitalar
+                      com endpoint HTTPS configurado em <code>BIRDID_PRO_BASE_URL</code>.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-amber-50 rounded border border-amber-200 text-amber-900 text-[11px] space-y-1">
+                  <strong>Aviso Mandatório de Conformidade ICP-Brasil:</strong>
+                  <p>
+                    A simples resposta de sucesso da API Soluti ou simulações locais NÃO constituem
+                    validação criptográfica suficiente. A liberação clínica do laudo permanece
+                    estritamente bloqueada até que o checklist dos 7 critérios criptográficos seja
+                    comprovado em produção com o certificado real do cardiologista.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}

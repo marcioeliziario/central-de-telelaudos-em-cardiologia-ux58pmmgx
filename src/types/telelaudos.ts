@@ -372,6 +372,11 @@ export interface ReportSignature {
   doctor_id?: string
   signing_provider?: string
   transaction_id?: string
+  tcn?: string
+  certificate_alias?: string
+  callback_received_at?: string
+  external_status?: string
+  is_simulated?: boolean
   signature_status: SignatureStatus
   requested_at?: string
   completed_at?: string
@@ -388,4 +393,79 @@ export interface ReportSignature {
     exam_request_id?: ExamRequest
     doctor_id?: Doctor
   }
+}
+
+// -------------------------------------------------------------
+// ETAPA 6A: CONECTOR BIRD ID PRO (SOLUTI CESS)
+// -------------------------------------------------------------
+
+export type BirdIdExternalStatus =
+  | 'WAITING'
+  | 'PROCESSING'
+  | 'SIGNED'
+  | 'ERROR'
+  | 'CANCELED'
+  | 'EXPIRED'
+
+export interface BirdIdProviderDiagnostic {
+  architectureMode: string
+  skipCloudCompatibility: string
+}
+
+export interface BirdIdProviderInfo {
+  id: string
+  name: string
+  psc: string
+  standard: string
+  endpointDocs: string
+  installationDocs?: string
+  authProtocol: string
+  active: boolean
+  reason: string
+  commercialClientConfigured: boolean
+  tcnSupported?: boolean
+  signatureType?: string
+  hashAlgorithm?: string
+  documentsSource?: string
+  diagnosticInfrastructure?: BirdIdProviderDiagnostic
+}
+
+export interface BirdIdInitTransactionResponse {
+  success: boolean
+  transactionId: string
+  tcn?: string
+  provider: string
+  isProviderActive: boolean
+  inactivityReason?: string
+  documentCode: string
+  sha256: string
+  status: SignatureStatus
+  externalStatus: string
+  callbackNonceToken: string
+  padesConfiguration?: {
+    type: string
+    hash_algorithm: string
+    auto_fix_document: boolean
+    documents_source: string
+  }
+  nextSteps: string[]
+}
+
+export interface BirdIdStatusResponse {
+  success: boolean
+  tcn?: string
+  transactionId: string
+  status: SignatureStatus
+  externalStatus: string
+  certificateAlias?: string | null
+  isClinicallyReleased: boolean
+  isSimulated?: boolean
+  isRealConnectionActive: boolean
+  documents?: Array<{
+    id: number
+    original_file_name: string
+    mediatype: string
+    status: string
+    checksum: string
+  }>
 }

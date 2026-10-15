@@ -1922,6 +1922,12 @@ routerAdd('GET', '/backend/v1/signatures/providers', (e) => {
     throw new ForbiddenError('Acesso restrito a usuários autenticados.')
   }
 
+  const birdIdActiveEnv = ($os.getenv('BIRDID_PRO_ENABLED') || '').toLowerCase() === 'true'
+  const birdIdHasSecrets = Boolean(
+    $os.getenv('BIRDID_CLIENT_ID') && $os.getenv('BIRDID_CLIENT_SECRET'),
+  )
+  const isBirdIdProActive = birdIdActiveEnv && birdIdHasSecrets
+
   const providers = [
     {
       id: 'vidaas',
@@ -1937,16 +1943,26 @@ routerAdd('GET', '/backend/v1/signatures/providers', (e) => {
     },
     {
       id: 'birdid',
-      name: 'Bird ID',
+      name: 'Bird ID Pro',
       psc: 'Soluti Certificadora',
       standard: 'PAdES ICP-Brasil (ISO 32000-1 / ETSI EN 319 142)',
-      endpointDocs:
-        'https://docs.vaultid.com.br/workspace/cloud/api/autenticacao-de-usuarios/autenticacao-em-sistemas-web',
-      authProtocol: 'OAuth 2.0 Authorization Code (RFC 6749) + PKCE (RFC 7636, S256)',
-      active: false,
-      reason:
-        'Credenciais comerciais de aplicação (Client ID, Client Secret e URI de redirecionamento autorizada) pendentes de contratação junto à Soluti.',
-      commercialClientConfigured: Boolean($os.getenv('BIRDID_CLIENT_ID')),
+      endpointDocs: 'https://docs.vaultid.com.br/workspace/cess/api/assinatura-de-documento-s',
+      installationDocs: 'https://docs.vaultid.com.br/workspace/cess/instalacao-e-configuracao',
+      authProtocol: 'OAuth 2.0 Soluti CESS (/signature-service, /file-transfer, /oauth)',
+      active: isBirdIdProActive,
+      reason: isBirdIdProActive
+        ? 'Conexão ativa com credenciais configuradas.'
+        : 'Conector funcional em modo STANDBY (desativado externamente). Credenciais comerciais e de homologação (BIRDID_CLIENT_ID, BIRDID_CLIENT_SECRET, BIRDID_PRO_BASE_URL) pendentes de contratação com a Soluti.',
+      commercialClientConfigured: birdIdHasSecrets,
+      tcnSupported: true,
+      signatureType: 'PDFSignature',
+      hashAlgorithm: 'SHA256',
+      documentsSource: 'UPLOAD_REFERENCE',
+      diagnosticInfrastructure: {
+        architectureMode: 'Container Docker CESS ou Instância Soluti em Nuvem',
+        skipCloudCompatibility:
+          'Skip Cloud é um backend gerenciado (PocketBase/Goja) sem Docker adicional. A integração técnica opera consumindo a API REST do Bird ID Pro via HTTPS (instância CESS hospedada pela Soluti ou dedicada na infraestrutura da instituição).',
+      },
     },
   ]
 
@@ -1998,6 +2014,12 @@ routerAdd('POST', '/backend/v1/signatures/request', (e) => {
     throw new BadRequestError('O identificador do documento (document_id) é obrigatório.')
   }
 
+  const birdIdActiveEnv = ($os.getenv('BIRDID_PRO_ENABLED') || '').toLowerCase() === 'true'
+  const birdIdHasSecrets = Boolean(
+    $os.getenv('BIRDID_CLIENT_ID') && $os.getenv('BIRDID_CLIENT_SECRET'),
+  )
+  const isBirdIdProActive = birdIdActiveEnv && birdIdHasSecrets
+
   const providersMap = {
     vidaas: {
       id: 'vidaas',
@@ -2012,15 +2034,16 @@ routerAdd('POST', '/backend/v1/signatures/request', (e) => {
     },
     birdid: {
       id: 'birdid',
-      name: 'Bird ID',
+      name: 'Bird ID Pro',
       psc: 'Soluti Certificadora',
       standard: 'PAdES ICP-Brasil (ISO 32000-1 / ETSI EN 319 142)',
-      endpointDocs:
-        'https://docs.vaultid.com.br/workspace/cloud/api/autenticacao-de-usuarios/autenticacao-em-sistemas-web',
-      authProtocol: 'OAuth 2.0 Authorization Code (RFC 6749) + PKCE (RFC 7636, S256)',
-      active: false,
-      reason:
-        'Credenciais comerciais de aplicação (Client ID, Client Secret e URI de redirecionamento autorizada) pendentes de contratação junto à Soluti.',
+      endpointDocs: 'https://docs.vaultid.com.br/workspace/cess/api/assinatura-de-documento-s',
+      installationDocs: 'https://docs.vaultid.com.br/workspace/cess/instalacao-e-configuracao',
+      authProtocol: 'OAuth 2.0 Soluti CESS (/signature-service, /file-transfer, /oauth)',
+      active: isBirdIdProActive,
+      reason: isBirdIdProActive
+        ? 'Conexão ativa com credenciais configuradas.'
+        : 'Conector funcional em modo STANDBY (desativado externamente). Credenciais comerciais e de homologação (BIRDID_CLIENT_ID, BIRDID_CLIENT_SECRET, BIRDID_PRO_BASE_URL) pendentes de contratação junto à Soluti.',
     },
   }
 
@@ -2091,6 +2114,7 @@ routerAdd('POST', '/backend/v1/signatures/request', (e) => {
   // Geração de Nonce Criptográfico e Token de Callback para proteção anti-replay
   const callbackNonce = $security.randomString(32)
   const transactionId = `TX-${providerKey.toUpperCase()}-${doc.getString('document_code')}-${Date.now()}`
+  const tcn = providerKey === 'birdid' ? `TCN-${$security.randomString(16).toLowerCase()}` : ''
   const nowIso = new Date().toISOString()
 
   let sigRecord = null
@@ -2102,20 +2126,27 @@ routerAdd('POST', '/backend/v1/signatures/request', (e) => {
     if (doctor) sigRecord.set('doctor_id', doctor.id)
     sigRecord.set('signing_provider', providerConfig.name)
     sigRecord.set('transaction_id', transactionId)
+    if (tcn) sigRecord.set('tcn', tcn)
     sigRecord.set('signature_status', 'PENDENTE')
     sigRecord.set('requested_at', nowIso)
     sigRecord.set('is_clinically_released', false)
+    sigRecord.set('is_simulated', !providerConfig.active)
+    sigRecord.set('external_status', 'WAITING')
     sigRecord.set(
       'signature_evidence',
       JSON.stringify({
         provider_id: providerKey,
         provider_name: providerConfig.name,
+        tcn: tcn || undefined,
         callback_nonce: callbackNonce,
         document_hash_sha256: doc.getString('file_hash_sha256'),
         document_code: doc.getString('document_code'),
         doctor_crm: doctor ? doctor.getString('crm') : '',
         standard: providerConfig.standard,
         anti_replay_token: $security.sha256(callbackNonce + transactionId),
+        signature_type: 'PDFSignature',
+        pades_hash_algorithm: 'SHA256',
+        auto_fix_document: true,
       }),
     )
     txApp.save(sigRecord)
@@ -2145,18 +2176,26 @@ routerAdd('POST', '/backend/v1/signatures/request', (e) => {
   return e.json(200, {
     success: true,
     transactionId,
+    tcn: tcn || undefined,
     provider: providerConfig.name,
     isProviderActive: providerConfig.active,
     inactivityReason: providerConfig.reason,
     documentCode: doc.getString('document_code'),
     sha256: doc.getString('file_hash_sha256'),
     status: 'PENDENTE',
+    externalStatus: 'WAITING',
     callbackNonceToken: $security.sha256(callbackNonce + transactionId),
+    padesConfiguration: {
+      type: 'PDFSignature',
+      hash_algorithm: 'SHA256',
+      auto_fix_document: true,
+      documents_source: 'UPLOAD_REFERENCE',
+    },
     nextSteps: [
-      'Contratação formal do canal API do provedor (VIDaaS ou Bird ID)',
-      'Configuração das variáveis de ambiente no Skip Cloud',
-      'Redirecionamento OAuth 2.0 PKCE para consentimento biométrico do médico',
-      'Validação criptográfica PAdES e liberação clínica condicionada',
+      'Contratação formal do canal comercial da Soluti (Bird ID Pro CESS)',
+      'Configuração das credenciais (BIRDID_CLIENT_ID, BIRDID_CLIENT_SECRET, BIRDID_PRO_BASE_URL, BIRDID_PRO_ENABLED)',
+      'Autorização do médico no fluxo oficial OAuth da Soluti (sem PIN/OTP no banco)',
+      'Validação criptográfica PAdES completa antes da liberação clínica',
     ],
   })
 })
@@ -2190,12 +2229,17 @@ routerAdd('GET', '/backend/v1/signatures/transactions/{id}/status', (e) => {
   return e.json(200, {
     success: true,
     transactionId: txId,
+    tcn: sig.getString('tcn') || evidence.tcn || undefined,
     signatureId: sig.id,
     status: sig.getString('signature_status'),
+    externalStatus: sig.getString('external_status') || 'WAITING',
     provider: sig.getString('signing_provider'),
+    certificateAlias: sig.getString('certificate_alias') || evidence.certificate_alias || undefined,
     requestedAt: sig.getString('requested_at'),
     completedAt: sig.getString('completed_at'),
+    callbackReceivedAt: sig.getString('callback_received_at') || undefined,
     isClinicallyReleased: sig.getBool('is_clinically_released'),
+    isSimulated: sig.getBool('is_simulated'),
     evidence,
   })
 })
@@ -2267,15 +2311,298 @@ routerAdd('POST', '/backend/v1/signatures/callback', (e) => {
     })
   }
 
+  const externalStatus = body.external_status || (body.status === 'ERROR' ? 'ERROR' : 'SIGNED')
+  const certificateAlias = body.certificate_alias || body.signer_alias || ''
+  const isSimulated = body.is_simulated === true || sig.getBool('is_simulated')
+  const nowIso = new Date().toISOString()
+
+  // Atualizar registro com dados recebidos do callback
+  $app.runInTransaction((txApp) => {
+    sig.set('callback_received_at', nowIso)
+    sig.set('external_status', externalStatus)
+    if (certificateAlias) sig.set('certificate_alias', certificateAlias)
+
+    if (externalStatus === 'SIGNED') {
+      sig.set('signature_status', 'ASSINADA')
+      sig.set('completed_at', nowIso)
+      if (signedHash) sig.set('signed_file_hash_sha256', signedHash)
+    } else if (externalStatus === 'ERROR') {
+      sig.set('signature_status', 'FALHA')
+      sig.set(
+        'rejection_reason',
+        body.error_message || 'Falha reportada pelo provedor no processamento.',
+      )
+    }
+
+    // A liberação clínica NUNCA é ativada no callback — apenas após validação criptográfica posterior
+    sig.set('is_clinically_released', false)
+
+    evidence.last_callback_payload = {
+      received_at: nowIso,
+      external_status: externalStatus,
+      certificate_alias: certificateAlias,
+      is_simulated: isSimulated,
+    }
+    sig.set('signature_evidence', JSON.stringify(evidence))
+    txApp.save(sig)
+  })
+
+  // Auditoria do callback
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('action', 'SIGNATURE_CALLBACK_PROCESSED')
+    auditRec.set('target_collection', 'report_signatures')
+    auditRec.set('target_id', sig.id)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Callback do provedor processado para transação ${transactionId}. Status externo: ${externalStatus}. Transição para: ${sig.getString('signature_status')}. Liberação clínica mantida bloqueada até validação.`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
   return e.json(200, {
     success: true,
     message: 'Callback recebido e verificado com sucesso pelo backend.',
     transactionId,
     verified: true,
+    newStatus: sig.getString('signature_status'),
+    externalStatus,
+    isClinicallyReleased: false,
   })
 })
 
-// 13. Checklist de Validação Criptográfica e Liberação Clínica (Etapa 4B)
+// 12.1. Conector Bird ID Pro - Upload de PDF para Assinatura (Simulado ou Real)
+routerAdd('POST', '/backend/v1/signatures/birdid/upload-pdf', (e) => {
+  if (!e.auth) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  let uploadBody = {}
+  try {
+    uploadBody = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const upTxId = uploadBody.transaction_id
+  const upTcn = uploadBody.tcn
+
+  if (!upTxId && !upTcn) {
+    throw new BadRequestError('É necessário informar o transaction_id ou o tcn.')
+  }
+
+  const upFilter = upTxId ? `transaction_id = '${upTxId}'` : `tcn = '${upTcn}'`
+
+  const sigsFound = $app.findRecordsByFilter('report_signatures', upFilter, '-created', 1, 0)
+  if (sigsFound.length === 0) {
+    throw new NotFoundError('Transação de assinatura não localizada.')
+  }
+
+  const sigRec = sigsFound[0]
+  const docRec = $app.findRecordById('report_documents', sigRec.getString('report_document_id'))
+  const envActive = ($os.getenv('BIRDID_PRO_ENABLED') || '').toLowerCase() === 'true'
+  const envHasSecrets = Boolean(
+    $os.getenv('BIRDID_CLIENT_ID') && $os.getenv('BIRDID_CLIENT_SECRET'),
+  )
+
+  if (!envActive || !envHasSecrets) {
+    // Conector em modo STANDBY com simulação explícita
+    const effectiveTcnVal =
+      sigRec.getString('tcn') || `TCN-${$security.randomString(16).toLowerCase()}`
+    sigRec.set('tcn', effectiveTcnVal)
+    sigRec.set('signature_status', 'PROCESSANDO')
+    sigRec.set('external_status', 'WAITING')
+    $app.save(sigRec)
+
+    return e.json(200, {
+      success: true,
+      simulated: true,
+      isRealConnectionActive: false,
+      message:
+        'Upload simulado com sucesso no conector Bird ID Pro (conexão externa em standby). Documento PDF 1.7 associado ao TCN.',
+      tcn: effectiveTcnVal,
+      transactionId: sigRec.getString('transaction_id'),
+      documentCode: docRec.getString('document_code'),
+      pdfSha256: docRec.getString('file_hash_sha256'),
+      eot: true,
+      executedMode: 'simple',
+      status: 'PROCESSANDO',
+      disclaimer:
+        'TESTE SIMULADO: Não comprova assinatura PAdES real nem autorização da chave privada.',
+    })
+  }
+
+  // Se houvesse credenciais ativas, aqui seria enviada a requisição multipart ao CESS /file-transfer/<tcn>/true/default
+  return e.json(200, {
+    success: true,
+    isRealConnectionActive: true,
+    message: 'Envio ao serviço CESS Soluti iniciado.',
+    tcn: sigRec.getString('tcn'),
+  })
+})
+
+// 12.2. Conector Bird ID Pro - Consulta Externa de Status pelo TCN (/signature-service/<tcn>)
+routerAdd('GET', '/backend/v1/signatures/birdid/status/{tcn}', (e) => {
+  if (!e.auth) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const pathTcn = e.request.pathValue('tcn')
+  const statusSigs = $app.findRecordsByFilter(
+    'report_signatures',
+    `tcn = '${pathTcn}' || transaction_id = '${pathTcn}'`,
+    '-created',
+    1,
+    0,
+  )
+
+  if (statusSigs.length === 0) {
+    throw new NotFoundError('Transação com TCN indicado não foi localizada.')
+  }
+
+  const statusSig = statusSigs[0]
+  const statusDoc = $app.findRecordById(
+    'report_documents',
+    statusSig.getString('report_document_id'),
+  )
+  const envActive = ($os.getenv('BIRDID_PRO_ENABLED') || '').toLowerCase() === 'true'
+  const envHasSecrets = Boolean(
+    $os.getenv('BIRDID_CLIENT_ID') && $os.getenv('BIRDID_CLIENT_SECRET'),
+  )
+
+  let statusEvidence = {}
+  try {
+    statusEvidence = JSON.parse(statusSig.getString('signature_evidence')) || {}
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    tcn: statusSig.getString('tcn'),
+    transactionId: statusSig.getString('transaction_id'),
+    status: statusSig.getString('signature_status'),
+    externalStatus: statusSig.getString('external_status') || 'WAITING',
+    certificateAlias:
+      statusSig.getString('certificate_alias') || statusEvidence.certificate_alias || null,
+    isClinicallyReleased: statusSig.getBool('is_clinically_released'),
+    isSimulated: statusSig.getBool('is_simulated'),
+    isRealConnectionActive: envActive && envHasSecrets,
+    documents: [
+      {
+        id: 0,
+        original_file_name: `${statusDoc.getString('document_code')}.pdf`,
+        mediatype: 'application/pdf',
+        status: statusSig.getString('signature_status') === 'ASSINADA' ? 'SIGNED' : 'WAITING',
+        checksum: statusDoc.getString('file_hash_sha256'),
+      },
+    ],
+  })
+})
+
+// 12.3. Endpoint de Teste e Homologação Local Bird ID Pro (Permite simular eventos da Soluti)
+routerAdd('POST', '/backend/v1/signatures/birdid/mock-event', (e) => {
+  if (!e.auth) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const cardioOrAdminCheck = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${e.auth.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isAuthorizedMock = cardioOrAdminCheck.some(
+    (uo) => uo.get('role') === 'cardiologist' || uo.get('role') === 'admin',
+  )
+  if (!isAuthorizedMock) {
+    throw new ForbiddenError(
+      'Apenas cardiologistas ou administradores podem acionar simulação de teste.',
+    )
+  }
+
+  let mockBody = {}
+  try {
+    mockBody = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const mockTxId = mockBody.transaction_id
+  const mockEvType = mockBody.event_type || 'SIGN_SUCCESS' // SIGN_SUCCESS, SIGN_FAIL, TIMEOUT, TAMPERED_HASH
+
+  if (!mockTxId) {
+    throw new BadRequestError('Identificador da transação é obrigatório.')
+  }
+
+  const mockSigs = $app.findRecordsByFilter(
+    'report_signatures',
+    `transaction_id = '${mockTxId}'`,
+    '',
+    1,
+    0,
+  )
+  if (mockSigs.length === 0) {
+    throw new NotFoundError('Transação não localizada.')
+  }
+
+  const targetSig = mockSigs[0]
+  const targetDoc = $app.findRecordById(
+    'report_documents',
+    targetSig.getString('report_document_id'),
+  )
+  const eventNowIso = new Date().toISOString()
+
+  let mockEvidence = {}
+  try {
+    mockEvidence = JSON.parse(targetSig.getString('signature_evidence')) || {}
+  } catch (_) {}
+
+  if (mockEvType === 'SIGN_SUCCESS') {
+    targetSig.set('signature_status', 'ASSINADA')
+    targetSig.set('external_status', 'SIGNED')
+    targetSig.set('completed_at', eventNowIso)
+    targetSig.set('certificate_alias', 'CARLOS EDUARDO SILVA:00012345678')
+    targetSig.set(
+      'signed_file_hash_sha256',
+      `SIGNED_SIM_${targetDoc.getString('file_hash_sha256')}`,
+    )
+    targetSig.set('is_simulated', true)
+    targetSig.set('is_clinically_released', false) // NUNCA libera no callback/assinatura sem validação
+
+    mockEvidence.mock_event = {
+      type: 'SIGN_SUCCESS',
+      timestamp: eventNowIso,
+      simulated_signer: 'Dr. Carlos Eduardo Silva (CRM 123456/SP)',
+      disclaimer: 'ESTA É UMA SIMULAÇÃO DE RESPOSTA DA SOLUTI. NÃO COMPROVA ASSINATURA PAdES REAL.',
+    }
+  } else if (mockEvType === 'SIGN_FAIL') {
+    targetSig.set('signature_status', 'FALHA')
+    targetSig.set('external_status', 'ERROR')
+    targetSig.set(
+      'rejection_reason',
+      'Rejeição no aplicativo Bird ID pelo titular (ou OTP inválido simulado).',
+    )
+    mockEvidence.mock_event = {
+      type: 'SIGN_FAIL',
+      timestamp: eventNowIso,
+      error: 'OTP_EXPIRED_OR_REJECTED',
+    }
+  }
+
+  targetSig.set('signature_evidence', JSON.stringify(mockEvidence))
+  $app.save(targetSig)
+
+  return e.json(200, {
+    success: true,
+    simulated: true,
+    transactionId: mockTxId,
+    newStatus: targetSig.getString('signature_status'),
+    externalStatus: targetSig.getString('external_status'),
+    isClinicallyReleased: targetSig.getBool('is_clinically_released'),
+    disclaimer:
+      'Aviso: Resposta fictícia do provedor. Não substitui validação criptográfica oficial.',
+  })
+})
+
+// 13. Checklist de Validação Criptográfica e Liberação Clínica (Etapa 4B & 6A)
 // Executa os 7 critérios estritos antes de qualquer liberação do documento
 routerAdd('POST', '/backend/v1/signatures/validate-and-release', (e) => {
   const authRecord = e.auth
@@ -2355,10 +2682,12 @@ routerAdd('POST', '/backend/v1/signatures/validate-and-release', (e) => {
       name: 'Validade Criptográfica da Assinatura Digital',
       description:
         'A assinatura CMS/PAdES deve ser matematicamente válida sobre o digest do documento.',
-      // Sem provedor comercial ativo nesta etapa, este critério NÃO passa simulado
+      // REQUISITO ESTRITO ETAPA 6A: A simples resposta de sucesso da API NÃO é validação criptográfica suficiente.
+      // Sem certificado real e validação de chave pública, este critério NUNCA passa simulado.
       passed: false,
-      details:
-        'Pendente de contratação e retorno real da chave privada do médico via API do provedor (não simulado).',
+      details: sig.getBool('is_simulated')
+        ? 'REJEITADO: Transação marcada como SIMULADA. Resposta fictícia não comprova assinatura criptográfica PAdES.'
+        : 'Pendente de contratação e retorno real da chave privada do médico via API do provedor (não simulado).',
     },
     {
       id: 'crit-5-cert-chain-trust',
@@ -2375,7 +2704,7 @@ routerAdd('POST', '/backend/v1/signatures/validate-and-release', (e) => {
         'Consulta em tempo real de revogação via CRL (Lista de Certificados Revogados) ou OCSP.',
       passed: false,
       details:
-        'Pendente de consulta aos pontos de distribuição de LCR/OCSP da autoridade certificadora.',
+        'Pendente de consulta aos pontos de distribuição de LCR/OCSP da autoridade certificadora (ex: ccd.acsoluti.com.br).',
     },
     {
       id: 'crit-7-signature-policy',

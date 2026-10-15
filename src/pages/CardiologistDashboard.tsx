@@ -5,6 +5,7 @@ import {
   doctorService,
   organizationService,
   draftService,
+  documentService,
 } from '@/services/telelaudosService'
 import { ExamRequest, Doctor, Organization, ExamStatus } from '@/types/telelaudos'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
@@ -48,11 +49,13 @@ import {
   FolderOpen,
   X,
   AlertTriangle,
+  PenTool,
 } from 'lucide-react'
 import EcgViewer from '@/components/EcgViewer'
 import ReportEditor from '@/components/ReportEditor'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
 import NotificationsPopover from '@/components/NotificationsPopover'
+import { BirdIdSigningModal } from '@/components/BirdIdSigningModal'
 
 export function CardiologistDashboard() {
   const { user } = useAuth()
@@ -79,6 +82,11 @@ export function CardiologistDashboard() {
   const [returningExam, setReturningExam] = useState<ExamRequest | null>(null)
   const [returnReason, setReturnReason] = useState<string>('')
   const [isReturning, setIsReturning] = useState<boolean>(false)
+
+  // ETAPA 6A: Modal Conector Bird ID Pro na lista de exames
+  const [birdIdModalExam, setBirdIdModalExam] = useState<ExamRequest | null>(null)
+  const [birdIdModalDoc, setBirdIdModalDoc] = useState<any | null>(null)
+  const [isOpeningBirdIdModal, setIsOpeningBirdIdModal] = useState<string | null>(null)
 
   // Modal de Testes de Segurança Automatizados
   const [isSecurityTestsOpen, setIsSecurityTestsOpen] = useState<boolean>(false)
@@ -783,15 +791,49 @@ export function CardiologistDashboard() {
                       )}
 
                       {exam.status === 'waiting_signature' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setActiveExam(exam)}
-                          className="h-8 text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50 gap-1 font-semibold"
-                        >
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          <span>Revisar Laudo</span>
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setActiveExam(exam)}
+                            className="h-8 text-xs border-indigo-300 text-indigo-700 hover:bg-indigo-50 gap-1 font-semibold"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            <span>Revisar Laudo</span>
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            onClick={async () => {
+                              setIsOpeningBirdIdModal(exam.id)
+                              try {
+                                const docs = await documentService.getDocumentsForExam(exam.id)
+                                if (docs && docs.length > 0) {
+                                  setBirdIdModalDoc(docs[0])
+                                  setBirdIdModalExam(exam)
+                                } else {
+                                  alert(
+                                    'Nenhum documento preparado para assinatura encontrado neste exame. Abra o editor e prepare o PDF.',
+                                  )
+                                }
+                              } catch (err: any) {
+                                alert(`Erro ao carregar documento: ${err.message}`)
+                              } finally {
+                                setIsOpeningBirdIdModal(null)
+                              }
+                            }}
+                            disabled={isOpeningBirdIdModal === exam.id}
+                            className="h-8 text-xs bg-[#0E4C92] hover:bg-[#0c3e77] text-white gap-1 font-semibold shadow-sm"
+                            title="Assinar com Bird ID Pro (Soluti CESS)"
+                          >
+                            {isOpeningBirdIdModal === exam.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <PenTool className="w-3.5 h-3.5" />
+                            )}
+                            <span>Assinar Bird ID</span>
+                          </Button>
+                        </>
                       )}
 
                       {/* Opção de Devolver com Problema Técnico */}
@@ -948,6 +990,20 @@ export function CardiologistDashboard() {
       <SecurityTestRunnerModal
         isOpen={isSecurityTestsOpen}
         onClose={() => setIsSecurityTestsOpen(false)}
+      />
+
+      {/* Modal Bird ID Pro na fila médica */}
+      <BirdIdSigningModal
+        isOpen={Boolean(birdIdModalDoc && birdIdModalExam)}
+        onClose={() => {
+          setBirdIdModalDoc(null)
+          setBirdIdModalExam(null)
+        }}
+        document={birdIdModalDoc}
+        examId={birdIdModalExam?.id}
+        doctorCrm={doctor?.crm}
+        doctorName={user?.name}
+        onSignatureUpdated={loadInitialData}
       />
     </div>
   )

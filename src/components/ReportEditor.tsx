@@ -57,6 +57,7 @@ import {
   Layers,
   ShieldCheck,
 } from 'lucide-react'
+import { BirdIdSigningModal } from '@/components/BirdIdSigningModal'
 
 interface ReportEditorProps {
   exam: ExamRequest
@@ -146,6 +147,10 @@ export default function ReportEditor({
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState<boolean>(false)
   const [signatures, setSignatures] = useState<any[]>([])
   const [isLoadingSigs, setIsLoadingSigs] = useState<boolean>(false)
+
+  // ETAPA 6A: Modal Conector Bird ID Pro
+  const [isBirdIdModalOpen, setIsBirdIdModalOpen] = useState<boolean>(false)
+  const [activeReportDoc, setActiveReportDoc] = useState<any | null>(null)
 
   // Referência para debounce do auto-save
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -877,6 +882,31 @@ export default function ReportEditor({
               <ShieldCheck className="w-3 h-3 text-emerald-600" />
               <span>Status da Assinatura</span>
             </Button>
+
+            {/* ETAPA 6A: Botão Conector Bird ID Pro */}
+            <Button
+              size="sm"
+              onClick={async () => {
+                try {
+                  const docs = await documentService.getDocumentsForExam(exam.id)
+                  if (docs && docs.length > 0) {
+                    setActiveReportDoc(docs[0])
+                    setIsBirdIdModalOpen(true)
+                  } else {
+                    alert(
+                      'Prepare o PDF para assinatura primeiro antes de abrir o conector Bird ID Pro.',
+                    )
+                  }
+                } catch (err: any) {
+                  alert(`Erro ao carregar documento: ${err.message}`)
+                }
+              }}
+              className="h-7 text-xs gap-1 bg-[#0E4C92] hover:bg-[#0c3e77] text-white shadow-sm font-semibold"
+              title="Conector de Assinatura Digital Bird ID Pro (Soluti CESS)"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Assinador Bird ID Pro</span>
+            </Button>
           </div>
         </div>
 
@@ -1448,6 +1478,24 @@ export default function ReportEditor({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* MODAL 8 (ETAPA 6A): CONECTOR BIRD ID PRO */}
+      <BirdIdSigningModal
+        isOpen={isBirdIdModalOpen}
+        onClose={() => setIsBirdIdModalOpen(false)}
+        document={activeReportDoc}
+        examId={exam.id}
+        doctorCrm={exam.expand?.assigned_doctor_id?.crm}
+        doctorName={exam.expand?.assigned_doctor_id?.expand?.user_id?.name}
+        onSignatureUpdated={async () => {
+          try {
+            const sigs = await documentService.getSignaturesForExam(exam.id)
+            setSignatures(sigs)
+          } catch {
+            /* intentionally ignored */
+          }
+        }}
+      />
     </div>
   )
 }

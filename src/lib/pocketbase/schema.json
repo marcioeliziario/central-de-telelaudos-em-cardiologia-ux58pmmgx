@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T15:21:56.883Z",
+  "generatedAt": "2026-10-15T15:32:17.417Z",
   "collections": [
     {
       "name": "users",
@@ -1508,13 +1508,44 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "tcn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "certificate_alias",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "callback_received_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "external_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_simulated",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE INDEX idx_repsig_doc ON report_signatures (report_document_id)",
         "CREATE INDEX idx_repsig_exam ON report_signatures (exam_request_id)",
         "CREATE INDEX idx_repsig_doctor ON report_signatures (doctor_id)",
-        "CREATE INDEX idx_repsig_status ON report_signatures (signature_status)"
+        "CREATE INDEX idx_repsig_status ON report_signatures (signature_status)",
+        "CREATE INDEX `idx_repsig_tcn` ON `report_signatures` (tcn)"
       ]
     },
     {

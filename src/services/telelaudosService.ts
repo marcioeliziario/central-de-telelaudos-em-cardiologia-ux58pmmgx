@@ -357,6 +357,15 @@ export const documentService = {
     })
   },
 
+  // Consulta histórico completo de assinaturas de um documento (Etapa 6A)
+  async getSignaturesByDocument(documentId: string): Promise<any[]> {
+    return await pb.collection('report_signatures').getFullList({
+      filter: `report_document_id = '${documentId}'`,
+      sort: '-created',
+      expand: 'report_document_id,doctor_id',
+    })
+  },
+
   // Etapa 5: Geração de Token Temporário Seguro para Visualização e Download de Laudo Liberado
   async getSecureAccessToken(docId: string): Promise<{
     success: boolean

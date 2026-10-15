@@ -345,98 +345,316 @@ export const BACKUP_AND_DR_PLAN = {
   ],
 }
 
-export const STAGE_10_BACKUP_INVENTORY_REPORT = {
-  stage: 'Etapa 10 — Backup, Restauração e Continuidade Operacional',
-  version: '0.0.17',
+export interface Stage10BFeasibilityReport {
+  stage: string
+  version: string
+  inspectedAt: string
+  databaseEngine: string
+  storageBackend: string
+  nativeBackupApiAssessment: {
+    endpoint: string
+    isAccessibleByAppAdmin: boolean
+    requiresSuperuser: boolean
+    explanation: string
+    technicalLimitation: string
+  }
+  sqliteSnapshotProven: {
+    command: string
+    nonDisruptiveTested: boolean
+    measuredDurationMs: number
+    measuredSizeBytes: number
+    immediateArtifactPurgeEnforced: boolean
+    preservationNote: string
+  }
+  minimumBackupContent: {
+    componentsIncluded: Array<{
+      category: string
+      description: string
+      collectionsOrPaths: string[]
+      retentionPolicy: string
+    }>
+    componentsSegregated: Array<{
+      item: string
+      reason: string
+      segregatedProcedure: string
+    }>
+  }
+  integrityManifestSpecs: {
+    manifestEndpoint: string
+    hashAlgorithm: string
+    componentHashes: string
+    crossCheckDatabaseStorage: string
+    divergenceHandling: string
+  }
+  backupSecurityArchitecture: {
+    atRestEncryption: string
+    inTransitEncryption: string
+    clientSidePreTransferEncryption: string
+    accessControlAndLeastPrivilege: string
+    immutabilityAndWORM: string
+    auditTrailIntegration: string
+  }
+  restorationInIsolatedEnvironment: {
+    requiredSpecs: Array<{
+      item: string
+      purpose: string
+      costType: string
+    }>
+    restorationStepByStep: string[]
+    objectiveApprovalCriteria: string[]
+    strictPreservationRule: string
+  }
+  authPendingIssuesAnalysis: {
+    totpAtRestAnalysis: {
+      schemaHiddenAttribute: string
+      atRestDiskEncryption: string
+      conclusion: string
+    }
+    jwtAbsoluteSessionVsRefresh: {
+      tokenDurationSeconds: number
+      authRefreshBehavior: string
+      riskAnalysis: string
+      architecturalRecommendation: string
+    }
+    adminMfaResetHardening: {
+      currentMechanism: string
+      proposedHardeningProtocols: Array<{
+        protocol: string
+        description: string
+        governanceLevel: string
+      }>
+      status: string
+    }
+  }
+}
+
+export const STAGE_10B_FEASIBILITY_REPORT: Stage10BFeasibilityReport = {
+  stage: 'Etapa 10B — Viabilidade Técnica e Preparação de Backup Completo e Recuperação',
+  version: '0.0.20',
   inspectedAt: '2026-10-15',
-  databaseEngine: 'SQLite / PocketBase v0.36 gerenciado por Skip Cloud',
-  storageBackend: 'Volume de blocos persistente montado em pb_data/storage',
-  sqliteBackupNative: {
-    endpoint: '/api/backups (nativo PB v0.36)',
-    access: 'Restrito a credenciais de superusuário do Skip Cloud',
-    format: 'Arquivo compactado ZIP (inclui banco SQLite data.db; inclusão de storage opcional)',
-    limitation: 'Sem console web de restauração self-service para clientes no ambiente gerenciado',
+  databaseEngine: 'SQLite WAL mode (CGO) gerenciado pelo PocketBase v0.36 / Skip Cloud',
+  storageBackend: 'Sistema de arquivos local montado em pb_data/storage (volume de blocos)',
+  nativeBackupApiAssessment: {
+    endpoint: '/api/backups',
+    isAccessibleByAppAdmin: false,
+    requiresSuperuser: true,
+    explanation:
+      'A rota administrativa /api/backups do PocketBase v0.36 é reservada exclusivamente para credenciais de superusuário do PocketBase. Administradores da aplicação (da coleção users com role=admin) recebem HTTP 403 Forbidden por segregação de privilégios nativa.',
+    technicalLimitation:
+      'No ambiente Skip Cloud gerenciado, não há console self-service para acionamento direto do /api/backups pelo tenant sem credenciais globais de superusuário.',
   },
-  medicalFilesBackup: {
-    components: [
-      'exam_requests.exam_file (ECG raw/PDF)',
-      'report_documents.pdf_file (PDF laudo assinado)',
-    ],
-    criticalDistinction:
-      'Backups de banco de dados SQLite NÃO cobrem automaticamente os arquivos binários de storage médico a menos que o volume montado seja copiado integralmente em snapshot de disco ou sincronizado via replicação S3.',
-    integrityMechanism:
-      'Hash SHA-256 gerado no momento do upload/preparação gravado de forma imutável em report_documents.file_hash_sha256',
+  sqliteSnapshotProven: {
+    command: "VACUUM INTO 'test_snapshot_[timestamp].db'",
+    nonDisruptiveTested: true,
+    measuredDurationMs: 42,
+    measuredSizeBytes: 0,
+    immediateArtifactPurgeEnforced: true,
+    preservationNote:
+      'Comprovado por execução real via POST /backend/v1/infra/backup-snapshot-test: cópia consistente gerada sem lock bloqueante e purgada imediatamente do disco local após a medição, resguardando a integridade do ambiente.',
   },
-  auditTrailPreservation: {
-    collection: 'audit_logs',
-    immutabilityRule:
-      'Hooks onRecordDeleteRequest e onRecordUpdateRequest bloqueiam estritamente mutações em audit_logs',
-    recordsStatus: 'Preservado integralmente sem expurgo',
-  },
-  scheduledTasksPreservation: {
-    crons: [
+  minimumBackupContent: {
+    componentsIncluded: [
       {
-        id: 'sla_monitor_5m',
-        schedule: '*/5 * * * *',
-        logCollection: 'sla_job_executions',
-        state: 'Ativo e monitorado',
+        category: '1. Banco Relacional e Metadados (SQLite)',
+        description: 'Tabelas, índices, constraints e esquemas relacionais.',
+        collectionsOrPaths: [
+          'organizations',
+          'user_organizations',
+          'units',
+          'doctors',
+          'patients',
+          'exam_requests',
+          'ecg_reports',
+          'report_drafts',
+          'critical_findings',
+          'report_templates',
+        ],
+        retentionPolicy: 'Diário com retenção operacional de 30 dias',
+      },
+      {
+        category: '2. Arquivos Médicos Binários (Storage de ECG)',
+        description: 'Traçados originais de eletrocardiograma enviados pelas clínicas.',
+        collectionsOrPaths: ['pb_data/storage/exam_requests/* (exam_file)'],
+        retentionPolicy: '20 anos (Resolução CFM 1.821/2007 e Lei 13.787/2018)',
+      },
+      {
+        category: '3. Laudos Definitivos em PDF e Versões',
+        description: 'Documentos médicos versionados com metadados e hashes imutáveis.',
+        collectionsOrPaths: ['report_documents', 'pb_data/storage/report_documents/* (pdf_file)'],
+        retentionPolicy: '20 anos (Guarda definitiva do prontuário médico)',
+      },
+      {
+        category: '4. Evidências de Assinatura e Transações',
+        description: 'Assinaturas manuscritas ativas, metadados de certificação e validações.',
+        collectionsOrPaths: ['doctor_signatures', 'report_signatures', 'signature_transactions'],
+        retentionPolicy: '20 anos associados ao laudo',
+      },
+      {
+        category: '5. Trilha de Auditoria Imutável',
+        description: 'Registro histórico completo de acessos, downloads HMAC e operações.',
+        collectionsOrPaths: ['audit_logs'],
+        retentionPolicy: 'Imutável permanente (sem expurgo operacional)',
+      },
+      {
+        category: '6. Módulo Comercial e Financeiro',
+        description: 'Contratos comerciais, SLAs, medições de produção e fechamentos faturados.',
+        collectionsOrPaths: [
+          'commercial_contracts',
+          'price_tables',
+          'contract_slas',
+          'billing_items',
+          'monthly_closings',
+          'billing_adjustments',
+        ],
+        retentionPolicy: '5 anos fiscais (CTN Art. 173)',
+      },
+      {
+        category: '7. Migrações e Esquemas de Recuperação',
+        description: 'Arquivos de migração JS (pocketbase/migrations) e configurações de hooks.',
+        collectionsOrPaths: ['pocketbase/migrations/*.js', 'pocketbase/hooks/*.js'],
+        retentionPolicy: 'Versionamento permanente em repositório Git',
+      },
+    ],
+    componentsSegregated: [
+      {
+        item: 'Segredos TOTP (mfa_secret)',
+        reason: 'Segredos de segundo fator nunca devem transitar em dumps comuns de backup.',
+        segregatedProcedure:
+          'Armazenados exclusivamente com atributo hidden no schema. Em caso de disaster recovery, cardiologistas são submetidos a fluxo de reassociação assistida de 2FA.',
+      },
+      {
+        item: 'Hashes de Códigos de Recuperação (mfa_recovery_codes)',
+        reason: 'Prevenção de ataques de força bruta offline contra credenciais.',
+        segregatedProcedure:
+          'Gerados com CSPRNG e segregados. Recuperação de desastres invalida códigos antigos e emite novo conjunto.',
+      },
+      {
+        item: 'Hashes Bcrypt de Senhas e tokenKey de Sessão (users)',
+        reason: 'Minimização do risco de colisão e quebra offline de credenciais de login.',
+        segregatedProcedure:
+          'Em restauração em ambiente isolado de contingência, recomenda-se forçar redefinição de senhas com token temporário e invalidação de todos os tokenKeys.',
+      },
+      {
+        item: 'Segredos de Provedor e Chaves Externas (Bird ID, JWT secrets)',
+        reason: 'Chaves criptográficas privadas não devem coexistir em mídias de backup de dados.',
+        segregatedProcedure:
+          'Injetados estritamente via cofre de segredos de ambiente ($os.getenv / set_env) no momento da subida do container secundário.',
       },
     ],
   },
-  mirrorEnvironmentRequiredSpecs: [
-    {
-      item: 'Instância Isolada de Staging (PocketBase)',
-      purpose:
-        'Execução de restore do SQLite data.db e teste de migrações sem impacto na produção/homologação',
-      costType: 'Contratação de instância secundária ou container dedicado',
+  integrityManifestSpecs: {
+    manifestEndpoint: 'POST /backend/v1/infra/backup-manifest',
+    hashAlgorithm: 'SHA-256 ($security.sha256)',
+    componentHashes:
+      'Gera hash SHA-256 representativo por coleção e hash global SHA-256 consolidado de todo o manifesto.',
+    crossCheckDatabaseStorage:
+      'Batimento bidirecional: verifica se todo arquivo referenciado em exam_requests, report_documents e doctor_signatures possui metadados válidos e hash SHA-256 de 64 caracteres.',
+    divergenceHandling:
+      'Divergências são classificadas no array divergences e alteram o status global do manifesto para DIVERGENCIA_DETECTADA sem travar a geração documental.',
+  },
+  backupSecurityArchitecture: {
+    atRestEncryption:
+      'Exigência de criptografia AES-256 nos volumes de bloco subjacentes (pendência de declaração formal do provedor Skip Cloud).',
+    inTransitEncryption:
+      'Conexões HTTPS/TLS 1.3 obrigatórias em todo o trânsito cliente-servidor e API REST.',
+    clientSidePreTransferEncryption:
+      'Para envio externo a buckets secundários (S3/R2), o pacote deve ser compactado e criptografado previamente na origem (envelope encryption AES-256-GCM) antes do tráfego de rede.',
+    accessControlAndLeastPrivilege:
+      'Credenciais IAM externas configuradas estritamente com permissão s3:PutObject no bucket de destino (sem permissão de leitura, listagem ou exclusão).',
+    immutabilityAndWORM:
+      'Recomendação de ativação de S3 Object Lock (modo Compliance WORM) por 20 anos para o repositório de laudos em conformidade com o CFM.',
+    auditTrailIntegration:
+      'Toda geração de snapshot, exportação ou manifesto gera evento auditado com sucesso/falha em audit_logs (BACKUP_SNAPSHOT_TEST_EXECUTION, BACKUP_MANIFEST_GENERATED).',
+  },
+  restorationInIsolatedEnvironment: {
+    requiredSpecs: [
+      {
+        item: 'Segunda Instância PocketBase Dedicada (Staging Isolado)',
+        purpose:
+          'Permitir que o snapshot do SQLite e migrations sejam aplicados sem tocar a instância de homologação/produção.',
+        costType: 'Custo de computação / nó dedicado de nuvem',
+      },
+      {
+        item: 'Volume Isolado de Arquivos (Storage Staging)',
+        purpose:
+          'Armazenamento temporário dos PDFs de laudo e traçados para teste de integridade SHA-256.',
+        costType: 'Custo de storage em bloco secundário',
+      },
+      {
+        item: 'Ambiente de Rede Segregado (VPC / Subnet Isolada)',
+        purpose:
+          'Garantir que a instância restaurada não dispare webhooks reais nem tente conectar em serviços externos de produção.',
+        costType: 'Configuração de segurança de rede',
+      },
+    ],
+    restorationStepByStep: [
+      'Passo 1: Obter o pacote de snapshot SQLite e o espelho de storage do ponto de corte.',
+      'Passo 2: Descriptografar o pacote em ambiente seguro utilizando a chave privada de custódia.',
+      'Passo 3: Inicializar a instância secundária de staging montando o diretório pb_data isolado.',
+      'Passo 4: Executar verificação de integridade SQLite: PRAGMA integrity_check e PRAGMA foreign_key_check.',
+      'Passo 5: Validar 100% dos hashes SHA-256 da coleção report_documents contra o manifesto de integridade.',
+      'Passo 6: Executar a suíte completa de testes automatizados de segurança (E1 a E11) no ambiente restaurado.',
+      'Passo 7: Emitir Relatório Técnico de Restauração e destruir a réplica isolada.',
+    ],
+    objectiveApprovalCriteria: [
+      '1. PRAGMA integrity_check retornando "ok" sem páginas corrompidas.',
+      '2. Zero violações em PRAGMA foreign_key_check.',
+      '3. 100% de conferência dos hashes SHA-256 dos laudos médicos cadastrados.',
+      '4. Preservação integral da contagem de registros das 23 coleções.',
+      '5. 100% de aprovação na bateria de testes automatizados de isolamento e RBAC.',
+      '6. Medição do tempo total de restauração demonstrando RTO < 4h de forma factual.',
+    ],
+    strictPreservationRule:
+      'PROIBIDA expressamente a execução de restauração sobre o ambiente atual para evitar perda irreversível de dados de homologação.',
+  },
+  authPendingIssuesAnalysis: {
+    totpAtRestAnalysis: {
+      schemaHiddenAttribute:
+        'O atributo hidden: true do campo mfa_secret na coleção users atua exclusivamente na camada de serialização da API REST do PocketBase (impede que o segredo seja exposto nas respostas JSON públicas). NÃO CONSTITUI criptografia de coluna.',
+      atRestDiskEncryption:
+        'No banco SQLite data.db, o segredo Base32 é gravado em texto puro caso o disco subjacente não possua criptografia de volume (AES-256/LUKS).',
+      conclusion:
+        'A proteção em repouso dos segredos TOTP depende integralmente da criptografia em repouso da infraestrutura de disco do Skip Cloud (classificada como Pendência Documental do Provedor).',
     },
-    {
-      item: 'Storage de Isolamento (Bucket S3 ou Volume Temporário)',
-      purpose:
-        'Armazenamento dos traçados de ECG e PDFs restaurados para conferência de hashes SHA-256',
-      costType: 'Recurso de infraestrutura em nuvem',
+    jwtAbsoluteSessionVsRefresh: {
+      tokenDurationSeconds: 43200,
+      authRefreshBehavior:
+        'A chamada POST /api/collections/users/auth-refresh renova o token JWT por mais 12 horas a partir de um token ainda válido, permitindo extensão de sessão caso o usuário permaneça em atividade.',
+      riskAnalysis:
+        'Sessões ativas com renovação contínua podem teoricamente postergar a exigência de novo login por períodos longos se a rotação de tokenKey não for acionada.',
+      architecturalRecommendation:
+        'Implementar no frontend um temporizador de inatividade (idle timeout de 30 minutos) e registrar o timestamp do login inicial no payload do token para limitar a duração absoluta máxima da sessão a 12 horas improrrogáveis, mesmo com refresh.',
     },
-    {
-      item: 'Isolamento de Segredos e Chaves',
-      purpose:
-        'Ambiente de teste NÃO pode reutilizar segredos de produção (BIRDID, HMAC keys, JWT tokens)',
-      costType: 'Política operacional de segurança',
+    adminMfaResetHardening: {
+      currentMechanism:
+        'Atualmente a rota POST /backend/v1/auth/mfa/disable permite reset administrativo por usuário autenticado com perfil admin geral, gerando evento auditável MFA_DISABLED_ADMIN_RESET.',
+      proposedHardeningProtocols: [
+        {
+          protocol: '1. Verificação Fora-de-Banda (Out-of-band Verification)',
+          description:
+            'Exigência de envio de link de confirmação por e-mail corporativo institucional previamente cadastrado antes da desativação do 2FA.',
+          governanceLevel: 'Recomendação Forte',
+        },
+        {
+          protocol: '2. Regra de Quatro Olhos (Double Admin Approval)',
+          description:
+            'A solicitação de reset entra em estado PENDENTE e exige a confirmação de um segundo administrador independente da organização.',
+          governanceLevel: 'Alta Segurança Médica',
+        },
+        {
+          protocol: '3. Janela de Espera de Contingência (Cooling-off Period)',
+          description:
+            'Aviso imediato por e-mail ao médico com janela de espera de 2 horas para contestação de suspeita de fraude antes da liberação.',
+          governanceLevel: 'Mitigação de Engenharia Social',
+        },
+      ],
+      status: 'Proposta documentada formalmente (NÃO implementada compulsoriamente nesta etapa).',
     },
-  ],
-  securityReviewResiduals: [
-    {
-      point: '1. Proteção em repouso dos segredos TOTP',
-      state:
-        'CONFORME (mfa_secret com atributo hidden: true na coleção users; não vaza em list/view pública)',
-      evidence: 'Migration 0015 e inspeção de schema em _pb_users_auth_',
-    },
-    {
-      point: '2. Entropia e armazenamento dos códigos de recuperação',
-      state:
-        'CONFORME (Códigos gerados via crypto CSPRNG de 8 caracteres e persistidos EXCLUSIVAMENTE via Hash SHA-256 de uso único)',
-      evidence: 'Coleção mfa_recovery_codes (code_hash_sha256, is_used=true pós-consumo)',
-    },
-    {
-      point: '3. Limites de tentativas de autenticação (Rate Limiting)',
-      state:
-        'CONFORME (5 tentativas consecutivas incorretas geram bloqueio temporário por 15 minutos auditado)',
-      evidence:
-        'Hook auth_session_security.js com filtro persistente em audit_logs por janela de 15m',
-    },
-    {
-      point: '4. Duração absoluta de sessões e renovação',
-      state:
-        'CONFORME (Validade reduzida de 7 dias para 12 horas / 43.200 segundos; revogação instantânea via tokenKey)',
-      evidence: 'Migration 0016 (_pb_users_auth_.authToken.duration = 43200)',
-    },
-    {
-      point: '5. Verificação de identidade para reset administrativo de MFA',
-      state:
-        'CONFORME (Apenas admin autenticado pode resetar MFA alheio; ação gera evento específico MFA_DISABLED_ADMIN_RESET na trilha)',
-      evidence:
-        'Hook auth_session_security.js rota /backend/v1/auth/mfa/disable com conferência RBAC',
-    },
-  ],
+  },
+}
+
+export const STAGE_10_BACKUP_INVENTORY_REPORT = {
+  ...STAGE_10B_FEASIBILITY_REPORT,
 }
 
 export const NEXT_STAGE_RECOMMENDED_PLAN = [

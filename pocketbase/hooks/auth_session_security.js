@@ -1098,14 +1098,16 @@ routerAdd('POST', '/backend/v1/doctor/signature/save', (e) => {
     sigRec.set('is_active', true)
     sigRec.set('last_verified_at', nowIso)
 
-    // Tentar gravar o arquivo físico se $filesystem estiver disponível
+    // Tentar gravar o arquivo físico se $filesystem estiver disponível e imagem válida
     try {
       if (typeof $filesystem !== 'undefined' && $filesystem.fileFromBytes) {
-        // Extrair raw bytes de base64 se aplicável
         const parts = imageDataUri.split(',')
         const rawContent = parts.length > 1 ? parts[1] : parts[0]
-        const fileObj = $filesystem.fileFromBytes(rawContent, fileName)
-        sigRec.set('signature_image', fileObj)
+        // Apenas se tiver tamanho válido
+        if (rawContent && rawContent.length > 30) {
+          const fileObj = $filesystem.fileFromBytes(rawContent, fileName)
+          sigRec.set('signature_image', fileObj)
+        }
       }
     } catch (_) {}
 

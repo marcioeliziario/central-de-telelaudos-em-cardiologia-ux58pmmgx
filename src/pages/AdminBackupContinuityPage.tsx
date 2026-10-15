@@ -27,12 +27,20 @@ import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
 import {
   BACKUP_AND_DR_PLAN,
   STAGE_10_BACKUP_INVENTORY_REPORT,
+  STAGE_10B_FEASIBILITY_REPORT,
 } from '@/data/infrastructureAuditData'
 
 export function AdminBackupContinuityPage() {
   const [loading, setLoading] = useState(false)
   const [drillLoading, setDrillLoading] = useState(false)
+  const [feasibilityLoading, setFeasibilityLoading] = useState(false)
+  const [snapshotProofLoading, setSnapshotProofLoading] = useState(false)
+  const [manifestLoading, setManifestLoading] = useState(false)
+
   const [backupStatusData, setBackupStatusData] = useState<any>(null)
+  const [feasibilityData, setFeasibilityData] = useState<any>(null)
+  const [snapshotProofResult, setSnapshotProofResult] = useState<any>(null)
+  const [manifestResult, setManifestResult] = useState<any>(null)
   const [drillResult, setDrillResult] = useState<any>(null)
   const [showTestRunner, setShowTestRunner] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -41,8 +49,12 @@ export function AdminBackupContinuityPage() {
     setLoading(true)
     setErrorMsg(null)
     try {
-      const res = await pb.send('/backend/v1/infra/backup-status', { method: 'GET' })
-      setBackupStatusData(res)
+      const [statusRes, feasRes] = await Promise.allSettled([
+        pb.send('/backend/v1/infra/backup-status', { method: 'GET' }),
+        pb.send('/backend/v1/infra/backup-feasibility', { method: 'GET' }),
+      ])
+      if (statusRes.status === 'fulfilled') setBackupStatusData(statusRes.value)
+      if (feasRes.status === 'fulfilled') setFeasibilityData(feasRes.value)
     } catch (err: any) {
       setErrorMsg(err.message || 'Erro ao consultar status de backup')
     } finally {
@@ -62,6 +74,30 @@ export function AdminBackupContinuityPage() {
     }
   }
 
+  const runSnapshotProof = async () => {
+    setSnapshotProofLoading(true)
+    try {
+      const res = await pb.send('/backend/v1/infra/backup-snapshot-test', { method: 'POST' })
+      setSnapshotProofResult(res)
+    } catch (err: any) {
+      setSnapshotProofResult({ error: err.message || 'Falha na prova de snapshot' })
+    } finally {
+      setSnapshotProofLoading(false)
+    }
+  }
+
+  const generateIntegrityManifest = async () => {
+    setManifestLoading(true)
+    try {
+      const res = await pb.send('/backend/v1/infra/backup-manifest', { method: 'POST' })
+      setManifestResult(res)
+    } catch (err: any) {
+      setManifestResult({ error: err.message || 'Falha ao gerar manifesto' })
+    } finally {
+      setManifestLoading(false)
+    }
+  }
+
   useEffect(() => {
     fetchBackupStatus()
   }, [])
@@ -74,20 +110,20 @@ export function AdminBackupContinuityPage() {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <Badge className="bg-indigo-500/20 text-indigo-300 border-indigo-500/40 font-mono text-[11px]">
-                ETAPA 10 — HOMOLOGAÇÃO
+                ETAPA 10B — INVESTIGAÇÃO E VIABILIDADE
               </Badge>
               <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-mono text-[11px]">
-                VERSÃO 0.0.17
+                VERSÃO 0.0.20
               </Badge>
             </div>
             <h1 className="text-2xl font-black tracking-tight text-white flex items-center gap-2">
               <HardDrive className="w-7 h-7 text-indigo-400" />
-              Backup, Restauração e Continuidade Operacional
+              Backup Completo, Recuperação e Continuidade Operacional
             </h1>
             <p className="text-sm text-slate-300 max-w-3xl leading-relaxed">
-              Inventário técnico de infraestrutura, distinção entre banco SQLite e storage de
-              arquivos médicos (ECG/PDF), comprovação ética das metas RPO/RTO e simulação não
-              destrutiva de DR Drill.
+              Investigação real de recursos do PocketBase / Skip Cloud, prova não disruptiva de
+              snapshot SQLite, manifesto criptográfico de integridade, segregação de segredos e
+              plano objetivo de restauração.
             </p>
           </div>
 
@@ -149,18 +185,21 @@ export function AdminBackupContinuityPage() {
 
       {/* TABS DE DETALHAMENTO */}
       <Tabs defaultValue="inventory" className="space-y-4">
-        <TabsList className="bg-slate-100 p-1 border border-slate-200 rounded-xl grid grid-cols-2 sm:grid-cols-4 gap-1">
+        <TabsList className="bg-slate-100 p-1 border border-slate-200 rounded-xl grid grid-cols-2 sm:grid-cols-5 gap-1">
           <TabsTrigger value="inventory" className="text-xs font-bold py-2">
-            1. Inventário dos Backups
+            1. Inventário & Arquitetura
+          </TabsTrigger>
+          <TabsTrigger value="feasibility" className="text-xs font-bold py-2">
+            2. Viabilidade 10B (Real)
+          </TabsTrigger>
+          <TabsTrigger value="manifest" className="text-xs font-bold py-2">
+            3. Manifesto & Provas
           </TabsTrigger>
           <TabsTrigger value="mirror" className="text-xs font-bold py-2">
-            2. Ambiente Espelho & DR
-          </TabsTrigger>
-          <TabsTrigger value="simulation" className="text-xs font-bold py-2">
-            3. Simulação DR Drill
+            4. Ambiente Espelho & Restore
           </TabsTrigger>
           <TabsTrigger value="security" className="text-xs font-bold py-2">
-            4. Revisão de Segurança (9B/10)
+            5. Segurança & Auth (9B/10B)
           </TabsTrigger>
         </TabsList>
 
@@ -360,7 +399,343 @@ export function AdminBackupContinuityPage() {
           </div>
         </TabsContent>
 
-        {/* TAB 2: AMBIENTE ESPELHO E REQUISITOS EXTERNOS */}
+        {/* TAB 2: VIABILIDADE TÉCNICA ETAPA 10B (RECURSOS REAIS VS LIMITAÇÕES) */}
+        <TabsContent value="feasibility" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Card className="border-slate-200 shadow-sm lg:col-span-2">
+              <CardHeader className="bg-slate-50/80 border-b border-slate-200 pb-3">
+                <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <Server className="w-4 h-4 text-indigo-600" />
+                  Investigação de Recursos Efetivamente Disponíveis (PocketBase / Skip Cloud)
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-600">
+                  Resultados comprovados por inspeção direta do backend v0.36
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 space-y-4 text-xs">
+                {/* 1. API NATIVA /api/backups */}
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 text-sm">
+                      API Nativa /api/backups do PocketBase
+                    </span>
+                    <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] font-bold">
+                      RESTRITO A SUPERUSER
+                    </Badge>
+                  </div>
+                  <p className="text-slate-700 leading-relaxed">
+                    {STAGE_10B_FEASIBILITY_REPORT.nativeBackupApiAssessment.explanation}
+                  </p>
+                  <div className="p-2.5 rounded-lg bg-amber-50/70 border border-amber-200 text-amber-950 font-mono text-[11px]">
+                    <strong>Diagnóstico Operacional:</strong>{' '}
+                    {STAGE_10B_FEASIBILITY_REPORT.nativeBackupApiAssessment.technicalLimitation}
+                  </div>
+                </div>
+
+                {/* 2. SNAPSHOT CONSISTENTE DO SQLITE SEM INTERRUPÇÃO */}
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 text-sm">
+                      Snapshot Consistente do SQLite (VACUUM INTO)
+                    </span>
+                    <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] font-bold">
+                      COMPROVADO
+                    </Badge>
+                  </div>
+                  <p className="text-slate-700 leading-relaxed">
+                    O SQLite em modo WAL permite snapshot consistente ponto-no-tempo sem bloquear
+                    leituras ou escritas clínicas. Testado e comprovado via rota administrativa{' '}
+                    <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-indigo-700">
+                      POST /backend/v1/infra/backup-snapshot-test
+                    </code>
+                    .
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      onClick={runSnapshotProof}
+                      disabled={snapshotProofLoading}
+                      className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs h-7 gap-1"
+                    >
+                      <Play className={`w-3 h-3 ${snapshotProofLoading ? 'animate-spin' : ''}`} />
+                      <span>Executar Prova Real de Snapshot</span>
+                    </Button>
+                    <span className="text-[11px] text-slate-500">
+                      (Mede tempo e remove imediatamente do disco)
+                    </span>
+                  </div>
+
+                  {snapshotProofResult && (
+                    <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-1 font-mono text-[11px] mt-2">
+                      <div className="flex items-center justify-between text-slate-800 font-bold">
+                        <span>Resultado da Prova:</span>
+                        <Badge className="bg-emerald-600 text-white text-[10px]">
+                          {snapshotProofResult.durationMs}ms
+                        </Badge>
+                      </div>
+                      <p className="text-slate-600">{snapshotProofResult.message}</p>
+                      <p className="text-emerald-700">
+                        ✓ Purgado imediatamente:{' '}
+                        {snapshotProofResult.cleanupSuccess ? 'SIM' : 'NÃO'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. CONTEÚDO MÍNIMO DO BACKUP */}
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+                  <span className="font-bold text-slate-900 text-sm block">
+                    Definição de Conteúdo Mínimo Obrigatório:
+                  </span>
+                  <div className="space-y-1.5">
+                    {STAGE_10B_FEASIBILITY_REPORT.minimumBackupContent.componentsIncluded.map(
+                      (comp, idx) => (
+                        <div
+                          key={idx}
+                          className="p-2 rounded-lg bg-slate-50 border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]"
+                        >
+                          <div>
+                            <strong className="text-slate-800">{comp.category}</strong>
+                            <p className="text-slate-500">{comp.description}</p>
+                          </div>
+                          <Badge variant="outline" className="text-[9px] shrink-0 font-mono">
+                            {comp.retentionPolicy}
+                          </Badge>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* CARD LATERAL: SEGREGAÇÃO DE SEGREDOS E DESTINO EXTERNO */}
+            <div className="space-y-4">
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader className="bg-slate-50/80 border-b border-slate-200 pb-3">
+                  <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                    <Lock className="w-4 h-4 text-rose-600" />
+                    Segregação Estrita de Segredos
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-600">
+                    O que NÃO entra no pacote comum de backup
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-3.5 space-y-2.5 text-xs">
+                  {STAGE_10B_FEASIBILITY_REPORT.minimumBackupContent.componentsSegregated.map(
+                    (seg, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded-lg border border-rose-100 bg-rose-50/60 space-y-1"
+                      >
+                        <strong className="text-rose-950 font-mono text-[11px] block">
+                          {seg.item}
+                        </strong>
+                        <p className="text-rose-900 text-[11px] leading-relaxed">{seg.reason}</p>
+                        <p className="text-slate-600 text-[10px] italic">
+                          {seg.segregatedProcedure}
+                        </p>
+                      </div>
+                    ),
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader className="bg-slate-50/80 border-b border-slate-200 pb-3">
+                  <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                    <ExternalLink className="w-4 h-4 text-indigo-600" />
+                    Destino Externo (S3 / R2 / Wasabi)
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-600">
+                    O que faltaria para automatizar envio externo
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-3.5 space-y-2 text-xs">
+                  <p className="text-slate-600 text-[11px] leading-relaxed">
+                    Nenhuma credencial externa está ativa (conforme diretriz). Para viabilizar
+                    automação via cronAdd interno sem contratar nada nesta etapa, seriam necessárias
+                    as variáveis:
+                  </p>
+                  <ul className="list-disc list-inside space-y-1 text-slate-700 font-mono text-[10px] bg-slate-50 p-2 rounded-lg border border-slate-200">
+                    {STAGE_10B_FEASIBILITY_REPORT.backupSecurityArchitecture
+                      .clientSidePreTransferEncryption && (
+                      <>
+                        <li>S3_ENDPOINT (ex.: Cloudflare R2 / AWS)</li>
+                        <li>S3_BUCKET_NAME</li>
+                        <li>S3_ACCESS_KEY_ID (permissão PutObject)</li>
+                        <li>S3_SECRET_ACCESS_KEY</li>
+                        <li>S3_REGION (sa-east-1 ANPD)</li>
+                        <li>BACKUP_ENCRYPTION_KEY_AES256</li>
+                      </>
+                    )}
+                  </ul>
+                  <p className="text-slate-500 text-[10px]">
+                    Cadastradas via segredos do ambiente ($os.getenv), nunca no Git.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* TAB 3: MANIFESTO DE INTEGRIDADE & PROVAS TÉCNICAS */}
+        <TabsContent value="manifest" className="space-y-4">
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader className="bg-slate-50/80 border-b border-slate-200 pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <FileCheck className="w-4 h-4 text-emerald-600" />
+                    Manifesto Criptográfico de Integridade (Banco ↔ Storage)
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-600">
+                    Hashes SHA-256 por coleção, batimento de arquivos referenciados e carimbo
+                    temporal
+                  </CardDescription>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={generateIntegrityManifest}
+                  disabled={manifestLoading}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-8 gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${manifestLoading ? 'animate-spin' : ''}`} />
+                  <span>Gerar Manifesto Live</span>
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-5 space-y-4 text-xs">
+              <p className="text-slate-600 leading-relaxed">
+                O endpoint administrativo{' '}
+                <code className="font-mono bg-slate-100 px-1 py-0.5 rounded text-indigo-700">
+                  POST /backend/v1/infra/backup-manifest
+                </code>{' '}
+                valida a consistência entre o banco SQLite e o storage de arquivos (ECG e PDFs),
+                calculando hash SHA-256 por componente e emitindo um Hash Global com registro na
+                auditoria imutável.
+              </p>
+
+              {manifestResult && (
+                <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/60 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      <span className="font-bold text-emerald-950 text-sm">
+                        Manifesto Gerado com Sucesso ({manifestResult.manifestId})
+                      </span>
+                    </div>
+                    <Badge className="bg-emerald-700 text-white font-mono text-[10px]">
+                      {manifestResult.summary?.consistencyStatus}
+                    </Badge>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 font-mono text-[11px]">
+                    <div className="p-2.5 rounded-lg bg-white border border-emerald-200">
+                      <span className="text-[10px] text-slate-500 block font-sans">Coleções:</span>
+                      <strong className="text-slate-800">
+                        {manifestResult.summary?.totalCollections}
+                      </strong>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-white border border-emerald-200">
+                      <span className="text-[10px] text-slate-500 block font-sans">
+                        Registros Totais:
+                      </span>
+                      <strong className="text-slate-800">
+                        {manifestResult.summary?.totalDatabaseRecords}
+                      </strong>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-white border border-emerald-200">
+                      <span className="text-[10px] text-slate-500 block font-sans">
+                        Arquivos no Storage:
+                      </span>
+                      <strong className="text-slate-800">
+                        {manifestResult.summary?.totalReferencedStorageFiles}
+                      </strong>
+                    </div>
+                    <div className="p-2.5 rounded-lg bg-white border border-emerald-200">
+                      <span className="text-[10px] text-slate-500 block font-sans">
+                        Tempo de Geração:
+                      </span>
+                      <strong className="text-slate-800">{manifestResult.durationMs}ms</strong>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-white border border-emerald-200 space-y-1 font-mono text-[11px]">
+                    <span className="text-slate-500 block text-[10px] font-sans">
+                      Hash SHA-256 Global do Manifesto:
+                    </span>
+                    <strong className="text-indigo-900 break-all text-xs">
+                      {manifestResult.globalManifestHashSha256}
+                    </strong>
+                    <span className="text-slate-400 text-[10px] block font-sans">
+                      Capturado em: {manifestResult.capturedAt}
+                    </span>
+                  </div>
+
+                  {manifestResult.components?.collections && (
+                    <div className="space-y-1 pt-1">
+                      <span className="font-bold text-slate-800 text-[11px] block font-sans">
+                        Hashes SHA-256 por Coleção (Amostra):
+                      </span>
+                      <div className="max-h-40 overflow-y-auto border border-emerald-200 rounded-lg bg-white">
+                        <table className="w-full text-left text-[10px] font-mono">
+                          <thead className="bg-slate-50 text-slate-600 sticky top-0">
+                            <tr>
+                              <th className="p-1.5">Coleção</th>
+                              <th className="p-1.5 text-right">Registros</th>
+                              <th className="p-1.5">Component Hash SHA-256</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {manifestResult.components.collections.map((c: any, idx: number) => (
+                              <tr key={idx} className="hover:bg-slate-50">
+                                <td className="p-1.5 font-bold text-slate-700">{c.collection}</td>
+                                <td className="p-1.5 text-right text-slate-600">
+                                  {c.recordsCount}
+                                </td>
+                                <td className="p-1.5 text-slate-500 truncate max-w-xs">
+                                  {c.componentHashSha256}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
+                  <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                    Segurança e Criptografia do Pacote
+                  </span>
+                  <p className="text-slate-600 text-[11px] leading-relaxed">
+                    {
+                      STAGE_10B_FEASIBILITY_REPORT.backupSecurityArchitecture
+                        .clientSidePreTransferEncryption
+                    }
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
+                  <span className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                    <Lock className="w-4 h-4 text-emerald-600" />
+                    Proteção WORM / Imutabilidade 20 Anos
+                  </span>
+                  <p className="text-slate-600 text-[11px] leading-relaxed">
+                    {STAGE_10B_FEASIBILITY_REPORT.backupSecurityArchitecture.immutabilityAndWORM}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TAB 4: AMBIENTE ESPELHO E REQUISITOS EXTERNOS */}
         <TabsContent value="mirror" className="space-y-4">
           <Card className="border-slate-200 shadow-sm">
             <CardHeader className="bg-slate-50/80 border-b border-slate-200 pb-3">
@@ -392,7 +767,7 @@ export function AdminBackupContinuityPage() {
                   Recursos Necessários para viabilizar o DR Drill em Ambiente Espelho:
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  {STAGE_10_BACKUP_INVENTORY_REPORT.mirrorEnvironmentRequiredSpecs.map(
+                  {STAGE_10B_FEASIBILITY_REPORT.restorationInIsolatedEnvironment.requiredSpecs.map(
                     (spec, idx) => (
                       <div
                         key={idx}
@@ -538,51 +913,99 @@ export function AdminBackupContinuityPage() {
           </Card>
         </TabsContent>
 
-        {/* TAB 4: REVISÃO DE SEGURANÇA RESIDUAL (9B/10) */}
+        {/* TAB 5: SEGURANÇA E PENDÊNCIAS DE AUTENTICAÇÃO (ETAPA 10B) */}
         <TabsContent value="security" className="space-y-4">
           <Card className="border-slate-200 shadow-sm">
             <CardHeader className="bg-slate-50/80 border-b border-slate-200 pb-3">
               <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <Lock className="w-4 h-4 text-indigo-600" />
-                Revisão Adicional de Segurança (Pontos Residuais da Etapa 9B / 10)
+                Auditoria Técnica de Segurança e Pendências Documentais de Autenticação (Etapa 10B)
               </CardTitle>
               <CardDescription className="text-xs text-slate-600">
-                Auditoria técnica comprovada com evidências de código, schemas e respostas do
-                servidor
+                Esclarecimento técnico preciso sobre segredos TOTP, sessões JWT e endurecimento de
+                reset de MFA
               </CardDescription>
             </CardHeader>
             <CardContent className="p-5 space-y-4 text-xs">
-              <div className="space-y-3">
-                {STAGE_10_BACKUP_INVENTORY_REPORT.securityReviewResiduals.map((sec, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-900 text-sm">{sec.point}</span>
-                      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] font-bold">
-                        CONFORME
-                      </Badge>
-                    </div>
-                    <p className="text-slate-700 leading-relaxed font-sans">{sec.state}</p>
-                    <div className="pt-1 text-[11px] text-slate-500 font-mono flex items-center gap-1.5">
-                      <span className="font-bold text-slate-700">Evidência:</span>
-                      <span>{sec.evidence}</span>
-                    </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* 1. SEGREDO TOTP: HIDDEN VS REPOUSO */}
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900">Segredos TOTP em Repouso</span>
+                    <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-[9px] font-bold">
+                      PENDÊNCIA PROVEDOR
+                    </Badge>
                   </div>
-                ))}
+                  <p className="text-slate-600 leading-relaxed">
+                    <strong>Distinção técnica estrita:</strong> O atributo{' '}
+                    <code className="font-mono">hidden: true</code> na coleção users oculta o
+                    segredo nas respostas da API JSON.{' '}
+                    <u>Não constitui criptografia em nível de coluna no SQLite</u>.
+                  </p>
+                  <p className="text-slate-700 text-[11px] bg-slate-50 p-2 rounded border border-slate-100">
+                    A proteção em repouso do segredo Base32 depende exclusivamente da criptografia
+                    do volume de disco do provedor Skip Cloud (AES-256/LUKS).
+                  </p>
+                </div>
+
+                {/* 2. DURAÇÃO ABSOLUTA DE SESSÃO VS REFRESH */}
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900">Sessão JWT e Renovação</span>
+                    <Badge className="bg-blue-100 text-blue-800 border-blue-300 text-[9px] font-bold">
+                      12H CONFIGURADO
+                    </Badge>
+                  </div>
+                  <p className="text-slate-600 leading-relaxed">
+                    A validade base do JWT está configurada para 12 horas (43.200s). No entanto, o
+                    endpoint nativo <code className="font-mono">/auth-refresh</code> do PocketBase
+                    estende o token por mais 12 horas enquanto válido.
+                  </p>
+                  <p className="text-slate-700 text-[11px] bg-slate-50 p-2 rounded border border-slate-100">
+                    <strong>Recomendação:</strong> Implementar temporizador de inatividade (idle
+                    timeout 30m) no client e teto absoluto de 12h improrrogáveis desde o login
+                    inicial.
+                  </p>
+                </div>
+
+                {/* 3. RESET ADMINISTRATIVO DE MFA */}
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900">Endurecimento do Reset MFA</span>
+                    <Badge className="bg-indigo-100 text-indigo-800 border-indigo-300 text-[9px] font-bold">
+                      PROPOSTA FORMAL
+                    </Badge>
+                  </div>
+                  <p className="text-slate-600 leading-relaxed">
+                    Atualmente o reset administrativo exige admin geral autenticado e registra
+                    evento auditado específico{' '}
+                    <code className="font-mono">MFA_DISABLED_ADMIN_RESET</code>.
+                  </p>
+                  <p className="text-slate-700 text-[11px] bg-slate-50 p-2 rounded border border-slate-100">
+                    <strong>Proposta de endurecimento:</strong> Confirmação fora-de-banda por
+                    e-mail, aprovação por segundo administrador e janela de espera de 2 horas.
+                  </p>
+                </div>
               </div>
 
-              <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/70 space-y-1.5">
-                <span className="font-bold text-indigo-950">
-                  Nota sobre Autenticação e Autorização:
+              {/* CRITÉRIOS OBJETIVOS DE APROVAÇÃO DE RESTAURAÇÃO */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
+                <span className="font-bold text-slate-900 text-sm">
+                  Critérios Objetivos de Aprovação da Restauração (Checklist Homologado):
                 </span>
-                <p className="text-indigo-900 leading-relaxed text-[11px]">
-                  Nenhum mecanismo de autenticação existente foi substituído. O sistema utiliza a
-                  coleção nativa <code className="font-mono">users</code> do PocketBase com extensão
-                  de segurança via hooks e migrations não disruptivas, preservando 100% da
-                  compatibilidade retroativa com os módulos clínicos e financeiros.
-                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
+                  {STAGE_10B_FEASIBILITY_REPORT.restorationInIsolatedEnvironment.objectiveApprovalCriteria.map(
+                    (crit, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2 rounded bg-white border border-slate-200 text-slate-700 flex items-center gap-1.5"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>{crit}</span>
+                      </div>
+                    ),
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -92,14 +92,26 @@ export default function Layout() {
 
             <Link
               to="/admin/auditoria-infra"
-              className={`hidden xl:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-black border transition-colors ${
+              className={`hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-black border transition-colors ${
                 location.pathname === '/admin/auditoria-infra'
                   ? 'bg-emerald-50 border-emerald-400 text-emerald-900 shadow-sm'
                   : 'bg-slate-100/80 border-slate-200 text-slate-700 hover:bg-slate-200/80'
               }`}
             >
               <Server className="w-3.5 h-3.5 text-emerald-700" />
-              <span>Auditoria Infra (E8)</span>
+              <span>Auditoria Infra</span>
+            </Link>
+
+            <Link
+              to="/admin/backup-continuidade"
+              className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-black border transition-colors ${
+                location.pathname === '/admin/backup-continuidade'
+                  ? 'bg-indigo-50 border-indigo-400 text-indigo-900 shadow-sm'
+                  : 'bg-slate-100/80 border-slate-200 text-slate-700 hover:bg-slate-200/80'
+              }`}
+            >
+              <HardDrive className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Backup & DR (E10)</span>
             </Link>
             {isAuthenticated && user ? (
               <div className="flex items-center gap-3">
@@ -196,7 +208,14 @@ export default function Layout() {
                 className="flex items-center gap-1.5 bg-emerald-950/80 hover:bg-emerald-900 px-3 py-1.5 rounded-md border border-emerald-700 transition-colors text-white text-xs font-bold"
               >
                 <Server className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Auditoria Infra (E8)</span>
+                <span>Auditoria Infra</span>
+              </Link>
+              <Link
+                to="/admin/backup-continuidade"
+                className="flex items-center gap-1.5 bg-indigo-950/80 hover:bg-indigo-900 px-3 py-1.5 rounded-md border border-indigo-700 transition-colors text-white text-xs font-bold"
+              >
+                <HardDrive className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Backup & DR (E10)</span>
               </Link>
             </div>
             <div className="flex items-center gap-1.5 text-emerald-300 font-medium">

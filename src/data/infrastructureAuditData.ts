@@ -89,13 +89,13 @@ export const TECHNICAL_INVENTORY: InventoryItem[] = [
       'Coleção users padrão. Revogação de sessão ocorre por expiração ou rotação do tokenKey da conta de usuário no PocketBase.',
   },
   {
-    component: 'Autenticação Multifator (MFA / 2FA Nativo)',
+    component: 'Autenticação Multifator (MFA / 2FA Nativo e Sessões 12h)',
     category: 'auth',
-    status: 'SEM_TESTE_SUFICIENTE',
+    status: 'COMPROVADO',
     evidence:
-      'O PocketBase v0.22+ possui suporte arquitetural nativo a MFA (TOTP/Email), porém as coleções atuais estão configuradas em modo senha única de teste (Skip@Pass).',
+      'Homologado nas Etapas 9A/10: MFA TOTP RFC 6238 com segredo oculto em repouso, códigos descartáveis com hash SHA-256, rate limiting (5 falhas/15m), tokens reduzidos para 12 horas e revogação instantânea via tokenKey.',
     details:
-      'Não implementada autenticação customizada em respeito à diretriz de segurança. MFA deve ser ativado nas configurações do PocketBase com política institucional na fase de produção.',
+      'Regras ativas no hook auth_session_security.js e migrations 0015 e 0016. Redefinição administrativa com verificação de identidade e trilha de auditoria específica.',
   },
   {
     component: 'Tarefas Agendadas (cronAdd sla_monitor_5m)',
@@ -120,9 +120,9 @@ export const TECHNICAL_INVENTORY: InventoryItem[] = [
     category: 'backups',
     status: 'SEM_TESTE_SUFICIENTE',
     evidence:
-      'Skip Cloud executa snapshots automáticos de infraestrutura da plataforma, porém não há console com restore sob demanda visível no contexto atual.',
+      'Skip Cloud executa snapshots automáticos de volume. Na Etapa 10, simulação não destrutiva de leitura foi executada com sucesso. Restauração física não executada por preservação estrita dos dados.',
     details:
-      'Plano de recuperação de desastres estruturado nesta etapa com metas propostas de RPO (< 1h) e RTO (< 4h), pendente de validação operacional conjunta.',
+      'RPO < 1h e RTO < 4h propostos e mantidos formalmente como NÃO COMPROVADOS. Ambiente espelho isolado requer contratação externa.',
   },
   {
     component: 'Criptografia em Repouso do Banco e Storage',
@@ -322,21 +322,120 @@ export const VULNERABILITIES_AND_LIMITATIONS: SecurityVulnerabilityItem[] = [
 ]
 
 export const BACKUP_AND_DR_PLAN = {
-  rpoProposed: '1 hora (RPO Máximo Aceitável Proposto)',
-  rtoProposed: '4 horas (RTO Máximo Aceitável Proposto)',
+  rpoProposed: '1 hora (RPO Máximo Aceitável Proposto — NÃO COMPROVADO)',
+  rtoProposed: '4 horas (RTO Máximo Aceitável Proposto — NÃO COMPROVADO)',
   backupDatabaseFrequency: 'Diário automatizado + WAL archiving contínuo da infraestrutura',
   backupFilesFrequency: 'Sincronização incremental contínua do diretório pb_data/storage',
-  retentionPolicy: '30 dias operacionais + snapshots mensais por 5 anos (proposto)',
+  retentionPolicy:
+    '30 dias operacionais + snapshots mensais por 5 anos (proposto CFM 1.821/2007: 20 anos para prontuários)',
   encryptionStandard: 'AES-256 em repouso e TLS 1.3 em trânsito (exigência técnica)',
   restorationStatus:
-    'NÃO EXECUTADA restauração sobre o ambiente atual (preservação estrita dos dados de teste)',
+    'NÃO EXECUTADA restauração sobre o ambiente atual (preservação estrita dos dados homologados). Simulação não destrutiva de leitura executada com sucesso via /backend/v1/infra/backup-drill-simulate.',
+  mirrorEnvironmentAssessment:
+    'Ambiente espelho indisponível na camada PaaS self-service atual. A restauração segura requer contratação de segunda instância dedicada para testes sem risco de corrupção ou contaminação de segredos.',
+  storageCoverageDistinction:
+    'O SQLite (pb_data/data.db) retém dados transacionais e metadados. O armazenamento de traçados de ECG e PDFs reside no sistema de arquivos em pb_data/storage. O mecanismo de backup deve cobrir ambos os componentes de forma sincronizada.',
   drDrillProcedure: [
     '1. Exportar snapshot do banco de dados e arquivos para bucket de isolamento temporário.',
     '2. Provisionar instância PocketBase de teste em ambiente isolado (staging isolado).',
     '3. Aplicar restauração completa do SQLite e verificar integridade de índices.',
     '4. Conferir integridade SHA-256 de 100% dos laudos cadastrados contra a tabela report_documents.',
-    '5. Executar a bateria de 44 testes de segurança e validar isolamento multi-tenant.',
+    '5. Executar a bateria de 50 testes de segurança e validar isolamento multi-tenant.',
     '6. Destruir o ambiente de teste e emitir Relatório de Auditoria de Restauração.',
+  ],
+}
+
+export const STAGE_10_BACKUP_INVENTORY_REPORT = {
+  stage: 'Etapa 10 — Backup, Restauração e Continuidade Operacional',
+  version: '0.0.17',
+  inspectedAt: '2026-10-15',
+  databaseEngine: 'SQLite / PocketBase v0.36 gerenciado por Skip Cloud',
+  storageBackend: 'Volume de blocos persistente montado em pb_data/storage',
+  sqliteBackupNative: {
+    endpoint: '/api/backups (nativo PB v0.36)',
+    access: 'Restrito a credenciais de superusuário do Skip Cloud',
+    format: 'Arquivo compactado ZIP (inclui banco SQLite data.db; inclusão de storage opcional)',
+    limitation: 'Sem console web de restauração self-service para clientes no ambiente gerenciado',
+  },
+  medicalFilesBackup: {
+    components: [
+      'exam_requests.exam_file (ECG raw/PDF)',
+      'report_documents.pdf_file (PDF laudo assinado)',
+    ],
+    criticalDistinction:
+      'Backups de banco de dados SQLite NÃO cobrem automaticamente os arquivos binários de storage médico a menos que o volume montado seja copiado integralmente em snapshot de disco ou sincronizado via replicação S3.',
+    integrityMechanism:
+      'Hash SHA-256 gerado no momento do upload/preparação gravado de forma imutável em report_documents.file_hash_sha256',
+  },
+  auditTrailPreservation: {
+    collection: 'audit_logs',
+    immutabilityRule:
+      'Hooks onRecordDeleteRequest e onRecordUpdateRequest bloqueiam estritamente mutações em audit_logs',
+    recordsStatus: 'Preservado integralmente sem expurgo',
+  },
+  scheduledTasksPreservation: {
+    crons: [
+      {
+        id: 'sla_monitor_5m',
+        schedule: '*/5 * * * *',
+        logCollection: 'sla_job_executions',
+        state: 'Ativo e monitorado',
+      },
+    ],
+  },
+  mirrorEnvironmentRequiredSpecs: [
+    {
+      item: 'Instância Isolada de Staging (PocketBase)',
+      purpose:
+        'Execução de restore do SQLite data.db e teste de migrações sem impacto na produção/homologação',
+      costType: 'Contratação de instância secundária ou container dedicado',
+    },
+    {
+      item: 'Storage de Isolamento (Bucket S3 ou Volume Temporário)',
+      purpose:
+        'Armazenamento dos traçados de ECG e PDFs restaurados para conferência de hashes SHA-256',
+      costType: 'Recurso de infraestrutura em nuvem',
+    },
+    {
+      item: 'Isolamento de Segredos e Chaves',
+      purpose:
+        'Ambiente de teste NÃO pode reutilizar segredos de produção (BIRDID, HMAC keys, JWT tokens)',
+      costType: 'Política operacional de segurança',
+    },
+  ],
+  securityReviewResiduals: [
+    {
+      point: '1. Proteção em repouso dos segredos TOTP',
+      state:
+        'CONFORME (mfa_secret com atributo hidden: true na coleção users; não vaza em list/view pública)',
+      evidence: 'Migration 0015 e inspeção de schema em _pb_users_auth_',
+    },
+    {
+      point: '2. Entropia e armazenamento dos códigos de recuperação',
+      state:
+        'CONFORME (Códigos gerados via crypto CSPRNG de 8 caracteres e persistidos EXCLUSIVAMENTE via Hash SHA-256 de uso único)',
+      evidence: 'Coleção mfa_recovery_codes (code_hash_sha256, is_used=true pós-consumo)',
+    },
+    {
+      point: '3. Limites de tentativas de autenticação (Rate Limiting)',
+      state:
+        'CONFORME (5 tentativas consecutivas incorretas geram bloqueio temporário por 15 minutos auditado)',
+      evidence:
+        'Hook auth_session_security.js com filtro persistente em audit_logs por janela de 15m',
+    },
+    {
+      point: '4. Duração absoluta de sessões e renovação',
+      state:
+        'CONFORME (Validade reduzida de 7 dias para 12 horas / 43.200 segundos; revogação instantânea via tokenKey)',
+      evidence: 'Migration 0016 (_pb_users_auth_.authToken.duration = 43200)',
+    },
+    {
+      point: '5. Verificação de identidade para reset administrativo de MFA',
+      state:
+        'CONFORME (Apenas admin autenticado pode resetar MFA alheio; ação gera evento específico MFA_DISABLED_ADMIN_RESET na trilha)',
+      evidence:
+        'Hook auth_session_security.js rota /backend/v1/auth/mfa/disable com conferência RBAC',
+    },
   ],
 }
 

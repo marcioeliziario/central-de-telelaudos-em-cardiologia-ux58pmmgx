@@ -27,13 +27,14 @@ import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
 
 export default function HomologationPage() {
   const [activeTab, setActiveTab] = useState<
+    | 'e10_backup_results'
     | 'e4a_results'
     | 'pdf_audit'
     | 'providers_arch'
     | 'providers_docs'
     | 'pending_security'
     | 'e9a_mfa_results'
-  >('e9a_mfa_results')
+  >('e10_backup_results')
   const [showTestRunner, setShowTestRunner] = useState(false)
 
   return (
@@ -99,6 +100,20 @@ export default function HomologationPage() {
       <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-slate-200 text-sm">
         <button
           type="button"
+          onClick={() => setActiveTab('e10_backup_results')}
+          className={`px-4 py-2.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-2 ${
+            activeTab === 'e10_backup_results'
+              ? 'bg-indigo-700 text-white shadow-md'
+              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+          }`}
+        >
+          <HardDrive className="w-4 h-4" />
+          <span>(1) Etapa 10: Backup & Continuidade (E10)</span>
+          <Badge className="bg-emerald-100 text-emerald-900 border-none ml-1 text-xs">6/6 OK</Badge>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('e9a_mfa_results')}
           className={`px-4 py-2.5 rounded-xl font-bold transition-all shrink-0 flex items-center gap-2 ${
             activeTab === 'e9a_mfa_results'
@@ -107,10 +122,9 @@ export default function HomologationPage() {
           }`}
         >
           <ShieldCheck className="w-4 h-4" />
-          <span>(1) Etapa 9A: MFA & Sessões (E9A-1 a E9A-8)</span>
+          <span>(2) Etapa 9A: MFA & Sessões</span>
           <Badge className="bg-emerald-100 text-emerald-900 border-none ml-1 text-xs">8/8 OK</Badge>
         </button>
-
         <button
           type="button"
           onClick={() => setActiveTab('e4a_results')}

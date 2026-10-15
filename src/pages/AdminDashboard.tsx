@@ -171,12 +171,22 @@ export default function AdminDashboard() {
             <Button
               variant="outline"
               size="sm"
-              className="gap-1.5 border-emerald-500 bg-emerald-50/90 text-emerald-900 hover:bg-emerald-100 font-black text-xs h-8 shadow-sm"
+              className="h-8 gap-1.5 text-xs text-slate-700 border-slate-300 hover:bg-slate-100"
             >
-              <Server className="w-3.5 h-3.5 text-emerald-700" />
-              <span>Auditoria Infra (E8)</span>
+              <Server className="w-3.5 h-3.5 text-slate-600" />
+              <span>Auditoria de Infraestrutura</span>
             </Button>
           </Link>
+          <Link to="/admin/backup-continuidade">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 text-xs text-indigo-700 border-indigo-300 bg-indigo-50/50 hover:bg-indigo-100"
+            >
+              <HardDrive className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Backup & DR (E10)</span>
+            </Button>
+          </Link>{' '}
           <Link to="/admin/teste-assinatura">
             <Button
               variant="outline"

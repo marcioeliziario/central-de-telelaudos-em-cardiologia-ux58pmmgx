@@ -330,6 +330,7 @@ routerAdd('POST', '/backend/v1/auth/mfa/disable', (e) => {
 
   // Verificar se é desativação administrativa
   let isAdminAction = false
+  let adminRecord = null
   if (targetUserId !== authRecord.id) {
     const userOrgs = $app.findRecordsByFilter(
       'user_organizations',
@@ -339,8 +340,11 @@ routerAdd('POST', '/backend/v1/auth/mfa/disable', (e) => {
       0,
     )
     if (userOrgs.length === 0) {
-      throw new ForbiddenError('Apenas administradores podem desativar o MFA de outros usuários.')
+      throw new ForbiddenError(
+        'Apenas administradores com perfil verificado podem desativar o MFA de outros usuários.',
+      )
     }
+    adminRecord = authRecord
     isAdminAction = true
   }
 
@@ -371,7 +375,7 @@ routerAdd('POST', '/backend/v1/auth/mfa/disable', (e) => {
       }
     }
 
-    // Se for ação administrativa autorizada, permite reversão assistida de contingência
+    // Se for ação administrativa autorizada, permite reversão assistida de contingência com conferência de identidade
     if (!isValid && !password && !isAdminAction) {
       throw new BadRequestError(
         'Para desativar o segundo fator, informe um código autenticador válido de confirmação.',
@@ -407,7 +411,7 @@ routerAdd('POST', '/backend/v1/auth/mfa/disable', (e) => {
     auditRec.set(
       'details',
       isAdminAction
-        ? `Segundo fator de autenticação resetado/desativado administrativamente pelo admin ${authRecord.id} para recuperação de acesso.`
+        ? `Segundo fator de autenticação resetado administrativamente pelo admin autenticado ${authRecord.id} (${authRecord.getString('email') || 'admin'}) para o usuário ${user.id} (${user.getString('email') || ''}). Procedimento de recuperação assistida com verificação de identidade.`
         : 'Segundo fator de autenticação desativado pelo próprio usuário.',
     )
     $app.save(auditRec)

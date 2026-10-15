@@ -8,6 +8,7 @@ import CentralDashboard from './pages/CentralDashboard'
 import HomologationPage from './pages/HomologationPage'
 import AdminBirdIdTestPage from './pages/AdminBirdIdTestPage'
 import AdminInfrastructureAuditPage from './pages/AdminInfrastructureAuditPage'
+import { AdminBackupContinuityPage } from './pages/AdminBackupContinuityPage'
 import Index from './pages/Index'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
@@ -33,6 +34,8 @@ const App = () => (
             <Route path="/admin/teste-assinatura" element={<AdminBirdIdTestPage />} />
             {/* Painel Administrativo de Auditoria de Infraestrutura & Segurança - Etapa 8 */}
             <Route path="/admin/auditoria-infra" element={<AdminInfrastructureAuditPage />} />
+            {/* Painel de Backup, Restauração & Continuidade Operacional - Etapa 10 */}
+            <Route path="/admin/backup-continuidade" element={<AdminBackupContinuityPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

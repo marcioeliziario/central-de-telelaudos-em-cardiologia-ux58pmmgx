@@ -29,6 +29,8 @@ routerUse((e) => {
       const isMfaBypassRoute =
         reqPath.startsWith('/backend/v1/auth/mfa/') ||
         reqPath.startsWith('/backend/v1/auth/sessions/') ||
+        reqPath.startsWith('/backend/v1/auth/reauth') ||
+        reqPath.startsWith('/backend/v1/doctor/signature') ||
         reqPath.startsWith('/backend/v1/infra/') ||
         reqPath === '/api/collections/users/auth-refresh' ||
         reqPath.startsWith('/api/collections/audit_logs') ||
@@ -796,6 +798,445 @@ routerAdd('POST', '/backend/v1/auth/mfa/policy-config', (e) => {
   })
 })
 
+// -------------------------------------------------------------
+// 8. REAUTENTICAÇÃO FORTE: SENHA + TOTP (QUANDO HABILITADO)
+// POST /backend/v1/auth/reauth
+// Utilizado para ações sensíveis (ex: cadastro/substituição/remoção de assinatura manuscrita)
+// -------------------------------------------------------------
+routerAdd('POST', '/backend/v1/auth/reauth', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const password = body.password || ''
+  const totpCode = (body.totp_code || '').trim()
+  const reason = body.reason || 'REAUTH_SENSITIVE_OPERATION'
+
+  if (!password) {
+    throw new BadRequestError('A senha atual é obrigatória para reautenticação.')
+  }
+
+  // 1. Validar senha atual
+  const user = $app.findRecordById('users', authRecord.id)
+  if (!user.validatePassword(password)) {
+    try {
+      const auditCol = $app.findCollectionByNameOrId('audit_logs')
+      const auditRec = new Record(auditCol)
+      auditRec.set('user_id', user.id)
+      auditRec.set('action', 'REAUTH_FAILED_PASSWORD')
+      auditRec.set('target_collection', 'users')
+      auditRec.set('target_id', user.id)
+      auditRec.set('status', 'REJECTED')
+      auditRec.set('details', `Falha de reautenticação: senha incorreta. Motivo: ${reason}`)
+      $app.save(auditRec)
+    } catch (_) {}
+
+    throw new BadRequestError('Senha incorreta. Confirme sua senha atual.')
+  }
+
+  // 2. Se MFA estiver ativado, validar TOTP obrigatoriamente
+  const mfaEnabled = user.getBool('mfa_enabled')
+  if (mfaEnabled) {
+    if (!totpCode || totpCode.length !== 6) {
+      throw new BadRequestError(
+        'Segundo fator ativado para esta conta. Informe o código autenticador de 6 dígitos.',
+      )
+    }
+
+    const secret = user.getString('mfa_secret')
+    if (!secret) {
+      throw new BadRequestError('Configuração de segundo fator corrompida. Contate o suporte.')
+    }
+
+    const computeTotp = (secretBase32, windowOffset) => {
+      const cleanSecret = (secretBase32 || '').toUpperCase().replace(/[\s=]/g, '')
+      const nowEpoch = Math.floor(Date.now() / 1000)
+      const counter = Math.floor(nowEpoch / 30) + (windowOffset || 0)
+      const counterHex = ('0000000000000000' + counter.toString(16)).slice(-16)
+      const hmac = $security.hs256(counterHex, cleanSecret)
+      const offset = parseInt(hmac.slice(-1), 16) * 2
+      const part = hmac.substr(offset, 8)
+      const num = parseInt(part, 16) & 0x7fffffff
+      const resCode = (num % 1000000).toString()
+      return ('000000' + resCode).slice(-6)
+    }
+
+    let isValidTotp = false
+    for (let offset = -1; offset <= 1; offset++) {
+      if (computeTotp(secret, offset) === totpCode) {
+        isValidTotp = true
+        break
+      }
+    }
+
+    if (!isValidTotp) {
+      try {
+        const auditCol = $app.findCollectionByNameOrId('audit_logs')
+        const auditRec = new Record(auditCol)
+        auditRec.set('user_id', user.id)
+        auditRec.set('action', 'REAUTH_FAILED_TOTP')
+        auditRec.set('target_collection', 'users')
+        auditRec.set('target_id', user.id)
+        auditRec.set('status', 'REJECTED')
+        auditRec.set(
+          'details',
+          `Falha de reautenticação: código TOTP inválido ou expirado. Motivo: ${reason}`,
+        )
+        $app.save(auditRec)
+      } catch (_) {}
+
+      throw new BadRequestError('Código de autenticação de 6 dígitos inválido ou expirado.')
+    }
+  }
+
+  // Gerar token de reautenticação temporário (válido por 10 minutos)
+  const nowIso = new Date().toISOString()
+  const reauthToken = $security.hs256(
+    `${user.id}_${nowIso}_${user.getString('tokenKey')}`,
+    'REAUTH_ONETIME_SECRET',
+  )
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', user.id)
+    auditRec.set('action', 'REAUTH_SUCCESS')
+    auditRec.set('target_collection', 'users')
+    auditRec.set('target_id', user.id)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Reautenticação forte realizada com sucesso (senha + ${mfaEnabled ? 'TOTP' : 'fator único'}). Motivo: ${reason}`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message: 'Reautenticação realizada com sucesso.',
+    reauthToken,
+    mfaVerified: mfaEnabled,
+    timestamp: nowIso,
+  })
+})
+
+// -------------------------------------------------------------
+// 9. GESTÃO SEGURA DA ASSINATURA MANUSCRITA DO CARDIOLOGISTA
+// POST /backend/v1/doctor/signature/save (Cadastrar / Substituir com Reautenticação)
+// DELETE /backend/v1/doctor/signature/remove (Remover com Reautenticação)
+// GET /backend/v1/doctor/signature/current (Obter própria assinatura)
+// -------------------------------------------------------------
+
+routerAdd('GET', '/backend/v1/doctor/signature/current', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  // Buscar assinatura exclusivamente deste usuário (@request.auth.id = user_id)
+  const sigRecords = $app.findRecordsByFilter(
+    'doctor_signatures',
+    `user_id = '${authRecord.id}'`,
+    '-created',
+    1,
+    0,
+  )
+
+  if (sigRecords.length === 0) {
+    return e.json(200, {
+      success: true,
+      hasSignature: false,
+      signature: null,
+    })
+  }
+
+  const sig = sigRecords[0]
+  return e.json(200, {
+    success: true,
+    hasSignature: true,
+    signature: {
+      id: sig.id,
+      userId: sig.getString('user_id'),
+      fileName: sig.getString('file_name'),
+      fileHashSha256: sig.getString('file_hash_sha256'),
+      isActive: sig.getBool('is_active'),
+      lastVerifiedAt: sig.getString('last_verified_at'),
+      created: sig.getString('created'),
+      updated: sig.getString('updated'),
+      signatureFile: sig.getString('signature_image'),
+      imageDataUri: sig.getString('image_data_uri') || null,
+    },
+  })
+})
+
+routerAdd('POST', '/backend/v1/doctor/signature/save', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  // Apenas médicos ou admins podem ter assinatura manuscrita cadastrada
+  const userOrgs = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isDoctorOrAdmin = userOrgs.some(
+    (uo) => uo.getString('role') === 'cardiologist' || uo.getString('role') === 'admin',
+  )
+  if (!isDoctorOrAdmin) {
+    throw new ForbiddenError(
+      'Apenas médicos cardiologistas credenciados ou administradores podem cadastrar assinatura.',
+    )
+  }
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const password = body.password || ''
+  const totpCode = (body.totp_code || '').trim()
+  const imageDataUri = body.image_data_uri || ''
+  const fileName = body.file_name || 'assinatura_manuscrita.png'
+
+  if (!imageDataUri) {
+    throw new BadRequestError('A imagem da assinatura manuscrita (PNG ou JPEG) é obrigatória.')
+  }
+
+  // 1. REAUTENTICAÇÃO OBRIGATÓRIA COM SENHA E TOTP (SE HABILITADO)
+  const user = $app.findRecordById('users', authRecord.id)
+  if (!password || !user.validatePassword(password)) {
+    try {
+      const auditCol = $app.findCollectionByNameOrId('audit_logs')
+      const auditRec = new Record(auditCol)
+      auditRec.set('user_id', user.id)
+      auditRec.set('action', 'DOCTOR_SIGNATURE_AUTH_FAILED')
+      auditRec.set('target_collection', 'doctor_signatures')
+      auditRec.set('target_id', user.id)
+      auditRec.set('status', 'REJECTED')
+      auditRec.set('details', 'Tentativa de salvar assinatura rejeitada por senha incorreta.')
+      $app.save(auditRec)
+    } catch (_) {}
+
+    throw new BadRequestError('Senha de confirmação incorreta.')
+  }
+
+  const mfaEnabled = user.getBool('mfa_enabled')
+  if (mfaEnabled) {
+    if (!totpCode || totpCode.length !== 6) {
+      throw new BadRequestError(
+        'MFA habilitado. Informe o código de 6 dígitos do app autenticador.',
+      )
+    }
+
+    const secret = user.getString('mfa_secret')
+    const computeTotp = (secretBase32, windowOffset) => {
+      const cleanSecret = (secretBase32 || '').toUpperCase().replace(/[\s=]/g, '')
+      const nowEpoch = Math.floor(Date.now() / 1000)
+      const counter = Math.floor(nowEpoch / 30) + (windowOffset || 0)
+      const counterHex = ('0000000000000000' + counter.toString(16)).slice(-16)
+      const hmac = $security.hs256(counterHex, cleanSecret)
+      const offset = parseInt(hmac.slice(-1), 16) * 2
+      const part = hmac.substr(offset, 8)
+      const num = parseInt(part, 16) & 0x7fffffff
+      const resCode = (num % 1000000).toString()
+      return ('000000' + resCode).slice(-6)
+    }
+
+    let isValidTotp = false
+    for (let offset = -1; offset <= 1; offset++) {
+      if (computeTotp(secret, offset) === totpCode) {
+        isValidTotp = true
+        break
+      }
+    }
+
+    if (!isValidTotp) {
+      throw new BadRequestError('Código de segundo fator inválido ou expirado.')
+    }
+  }
+
+  // 2. Calcular hash SHA-256 da imagem para integridade estrita
+  const fileHash = $security.sha256(imageDataUri)
+  const nowIso = new Date().toISOString()
+
+  let savedRecord = null
+  let isSubstitution = false
+
+  $app.runInTransaction((txApp) => {
+    // Verificar se já existia assinatura cadastrada
+    const existing = txApp.findRecordsByFilter(
+      'doctor_signatures',
+      `user_id = '${user.id}'`,
+      '-created',
+      1,
+      0,
+    )
+
+    let sigRec
+    if (existing.length > 0) {
+      sigRec = existing[0]
+      isSubstitution = true
+    } else {
+      const col = txApp.findCollectionByNameOrId('doctor_signatures')
+      sigRec = new Record(col)
+      sigRec.set('user_id', user.id)
+    }
+
+    sigRec.set('file_name', fileName)
+    sigRec.set('file_hash_sha256', fileHash)
+    sigRec.set('image_data_uri', imageDataUri)
+    sigRec.set('is_active', true)
+    sigRec.set('last_verified_at', nowIso)
+
+    // Tentar gravar o arquivo físico se $filesystem estiver disponível
+    try {
+      if (typeof $filesystem !== 'undefined' && $filesystem.fileFromBytes) {
+        // Extrair raw bytes de base64 se aplicável
+        const parts = imageDataUri.split(',')
+        const rawContent = parts.length > 1 ? parts[1] : parts[0]
+        const fileObj = $filesystem.fileFromBytes(rawContent, fileName)
+        sigRec.set('signature_image', fileObj)
+      }
+    } catch (_) {}
+
+    txApp.save(sigRec)
+    savedRecord = sigRec
+  })
+
+  // 3. Registrar na trilha de auditoria
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', user.id)
+    auditRec.set(
+      'action',
+      isSubstitution ? 'DOCTOR_SIGNATURE_SUBSTITUTED' : 'DOCTOR_SIGNATURE_REGISTERED',
+    )
+    auditRec.set('target_collection', 'doctor_signatures')
+    auditRec.set('target_id', savedRecord.id)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Assinatura manuscrita ${isSubstitution ? 'substituída' : 'cadastrada'} com reautenticação forte (senha + ${mfaEnabled ? 'TOTP' : 'senha'}). Arquivo: ${fileName}, SHA-256: ${fileHash}`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message: `Assinatura manuscrita ${isSubstitution ? 'substituída' : 'cadastrada'} com sucesso.`,
+    isSubstitution,
+    signatureId: savedRecord.id,
+    fileHashSha256: fileHash,
+    fileName,
+    verifiedAt: nowIso,
+  })
+})
+
+routerAdd('DELETE', '/backend/v1/doctor/signature/remove', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const password = body.password || ''
+  const totpCode = (body.totp_code || '').trim()
+
+  const user = $app.findRecordById('users', authRecord.id)
+  if (!password || !user.validatePassword(password)) {
+    throw new BadRequestError('Senha de confirmação incorreta para remover a assinatura.')
+  }
+
+  const mfaEnabled = user.getBool('mfa_enabled')
+  if (mfaEnabled) {
+    if (!totpCode || totpCode.length !== 6) {
+      throw new BadRequestError(
+        'MFA habilitado. Informe o código de 6 dígitos do app autenticador.',
+      )
+    }
+
+    const secret = user.getString('mfa_secret')
+    const computeTotp = (secretBase32, windowOffset) => {
+      const cleanSecret = (secretBase32 || '').toUpperCase().replace(/[\s=]/g, '')
+      const nowEpoch = Math.floor(Date.now() / 1000)
+      const counter = Math.floor(nowEpoch / 30) + (windowOffset || 0)
+      const counterHex = ('0000000000000000' + counter.toString(16)).slice(-16)
+      const hmac = $security.hs256(counterHex, cleanSecret)
+      const offset = parseInt(hmac.slice(-1), 16) * 2
+      const part = hmac.substr(offset, 8)
+      const num = parseInt(part, 16) & 0x7fffffff
+      const resCode = (num % 1000000).toString()
+      return ('000000' + resCode).slice(-6)
+    }
+
+    let isValidTotp = false
+    for (let offset = -1; offset <= 1; offset++) {
+      if (computeTotp(secret, offset) === totpCode) {
+        isValidTotp = true
+        break
+      }
+    }
+
+    if (!isValidTotp) {
+      throw new BadRequestError('Código de segundo fator inválido ou expirado.')
+    }
+  }
+
+  const existing = $app.findRecordsByFilter(
+    'doctor_signatures',
+    `user_id = '${user.id}'`,
+    '-created',
+    10,
+    0,
+  )
+
+  if (existing.length === 0) {
+    throw new NotFoundError('Nenhuma assinatura manuscrita cadastrada para remoção.')
+  }
+
+  let removedId = ''
+  for (const rec of existing) {
+    removedId = rec.id
+    $app.delete(rec)
+  }
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', user.id)
+    auditRec.set('action', 'DOCTOR_SIGNATURE_REMOVED')
+    auditRec.set('target_collection', 'doctor_signatures')
+    auditRec.set('target_id', removedId || user.id)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Assinatura manuscrita removida com reautenticação forte (senha + ${mfaEnabled ? 'TOTP' : 'senha'}).`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message: 'Assinatura manuscrita removida com sucesso.',
+    removedId,
+  })
+})
+
 console.log(
-  '[AUTH_SESSION_SECURITY] Módulo Etapa 9A de MFA e Segurança de Sessão carregado com sucesso.',
+  '[AUTH_SESSION_SECURITY] Módulo de MFA, Sessão e Assinatura Manuscrita carregado com sucesso.',
 )

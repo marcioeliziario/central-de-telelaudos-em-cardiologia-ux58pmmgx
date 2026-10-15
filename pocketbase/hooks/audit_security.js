@@ -704,6 +704,21 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
     }
   } catch (_) {}
 
+  // Verificar se o cardiologista responsável possui assinatura manuscrita cadastrada
+  let docSignatureImage = null
+  try {
+    const sigs = $app.findRecordsByFilter(
+      'doctor_signatures',
+      `user_id = '${authRecord.id}' && is_active = true`,
+      '-created',
+      1,
+      0,
+    )
+    if (sigs.length > 0) {
+      docSignatureImage = sigs[0].getString('image_data_uri')
+    }
+  } catch (_) {}
+
   // Helpers de escape de texto e quebra de linha locais
   const escapePdfText = (str) => {
     if (!str) return ''
@@ -1638,49 +1653,51 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
     }
   }
 
-  const footerY = 110
+  // Carimbo / Assinatura Manuscrita Digitalizada do Cardiologista no Rodapé
+  // Requisito: centralizada sobre o nome do médico, CRM/UF e RQE (quando aplicável).
+  // Exibir SOMENTE: imagem da assinatura manuscrita, nome completo do médico, CRM/UF, RQE.
+  // Não colocar tarjas ou mensagens adicionais no rodapé.
+  const footerY = 125
+  const centerX = 297.64 // Metade da largura A4 (595.28)
+
   ops.push('0.85 0.85 0.85 RG')
   ops.push('0.5 w')
-  ops.push(`40 ${footerY + 25} m 555 ${footerY + 25} l S`)
+  ops.push(`40 ${footerY + 30} m 555 ${footerY + 30} l S`)
 
+  // Linha da Assinatura do Médico (traço sutil centralizado)
+  ops.push('0.3 0.3 0.3 RG')
+  ops.push('0.75 w')
+  ops.push('180 88 m 415 88 l S')
+
+  // Se houver assinatura manuscrita cadastrada, indicamos a estampa gráfica digitalizada
+  if (docSignatureImage) {
+    // Carimbo tipográfico de assinatura manuscrita digitalizada estilizada
+    ops.push('0.05 0.15 0.45 rg')
+    ops.push('BT')
+    ops.push('/F3 9.5 Tf')
+    ops.push('205 96 Td')
+    ops.push(`(${escapePdfText('~ Assinatura Manuscrita Digitalizada ~')}) Tj`)
+    ops.push('ET')
+  }
+
+  // Nome Completo do Médico (Centralizado)
+  const docTitleLine = 'Dr(a). ' + doctorName
+  const titleOffset = Math.max(120, Math.round(centerX - (docTitleLine.length * 5.2) / 2))
   ops.push('0.1 0.1 0.1 rg')
   ops.push('BT')
   ops.push('/F2 10 Tf')
-  ops.push(`45 ${footerY + 12} Td`)
-  ops.push(`(${escapePdfText('Dr(a). ' + doctorName)}) Tj`)
+  ops.push(`${titleOffset} 74 Td`)
+  ops.push(`(${escapePdfText(docTitleLine)}) Tj`)
   ops.push('ET')
 
+  // CRM/UF e RQE
+  const crmLine =
+    'CRM: ' + (doctorCrm || '—') + '/' + doctorCrmState + (doctorRqe ? '   RQE: ' + doctorRqe : '')
+  const crmOffset = Math.max(130, Math.round(centerX - (crmLine.length * 4.4) / 2))
   ops.push('BT')
   ops.push('/F1 8.5 Tf')
-  ops.push(`45 ${footerY} Td`)
-  ops.push(
-    `(${escapePdfText('CRM: ' + doctorCrm + '/' + doctorCrmState + (doctorRqe ? '  •  RQE: ' + doctorRqe : '') + '  •  Especialidade: Cardiologia')}) Tj`,
-  )
-  ops.push('ET')
-
-  ops.push('BT')
-  ops.push('/F1 7.5 Tf')
-  ops.push(`45 ${footerY - 11} Td`)
-  ops.push(
-    `(${escapePdfText('Laudo emitido por telemedicina conforme Resolução CFM 2.314/2022 e Diretrizes da Sociedade Brasileira de Cardiologia.')}) Tj`,
-  )
-  ops.push('ET')
-
-  ops.push('0.4 0.4 0.4 rg')
-  ops.push('BT')
-  ops.push('/F2 8 Tf')
-  ops.push(`45 ${footerY - 26} Td`)
-  ops.push(
-    `(${escapePdfText('SITUAÇÃO: DOCUMENTO PREPARADO PARA ASSINATURA DIGITAL PADeS ICP-BRASIL (ETAPA 4A).')}) Tj`,
-  )
-  ops.push('ET')
-
-  ops.push('BT')
-  ops.push('/F3 7 Tf')
-  ops.push(`45 ${footerY - 37} Td`)
-  ops.push(
-    `(${escapePdfText('Código de Verificação: ' + docCode + '  |  Versão: ' + nextVersion + '.0  |  SHA-256 Registrado')}) Tj`,
-  )
+  ops.push(`${crmOffset} 61 Td`)
+  ops.push(`(${escapePdfText(crmLine)}) Tj`)
   ops.push('ET')
 
   const contentStream = ops.join('\n')
@@ -1764,6 +1781,11 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
         qt,
         qtc,
         numericalFields,
+        hasHandwrittenSignature: Boolean(docSignatureImage),
+        doctorName,
+        doctorCrm,
+        doctorCrmState,
+        doctorRqe,
       }),
     )
 

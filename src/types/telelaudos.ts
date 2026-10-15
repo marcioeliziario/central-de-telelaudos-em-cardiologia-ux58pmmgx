@@ -657,3 +657,26 @@ export interface MedicalProductionItem {
   remunerationRuleStatus: string
   financialTransferAmount: number | null
 }
+
+// -------------------------------------------------------------
+// ASSINATURA MANUSCRITA DO CARDIOLOGISTA (ETAPA DE HOMOLOGAÇÃO)
+// -------------------------------------------------------------
+export interface DoctorSignature {
+  id: string
+  user_id: string
+  signature_image: string
+  file_name?: string
+  file_hash_sha256?: string
+  image_data_uri?: string
+  is_active: boolean
+  last_verified_at?: string
+  created: string
+  updated: string
+  expand?: {
+    user_id?: {
+      id: string
+      name: string
+      email: string
+    }
+  }
+}

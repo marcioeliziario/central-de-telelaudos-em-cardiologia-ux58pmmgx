@@ -55,6 +55,7 @@ import EcgViewer from '@/components/EcgViewer'
 import ReportEditor from '@/components/ReportEditor'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
 import { MfaSecurityCard } from '@/components/MfaSecurityCard'
+import { DoctorSignatureCard } from '@/components/DoctorSignatureCard'
 import NotificationsPopover from '@/components/NotificationsPopover'
 import { BirdIdSigningModal } from '@/components/BirdIdSigningModal'
 
@@ -445,6 +446,9 @@ export function CardiologistDashboard() {
           </Button>
         </div>
       </div>
+
+      {/* REQUISITO: Card 'Minha Assinatura' no Painel do Cardiologista */}
+      <DoctorSignatureCard />
 
       {/* Painel Integrado de MFA do Médico Laudador (Etapa 9A) */}
       <MfaSecurityCard />

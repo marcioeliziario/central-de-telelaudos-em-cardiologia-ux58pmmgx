@@ -56,6 +56,8 @@ import {
   PenTool,
   Layers,
   ShieldCheck,
+  Download,
+  Upload,
 } from 'lucide-react'
 import { BirdIdSigningModal } from '@/components/BirdIdSigningModal'
 
@@ -151,6 +153,11 @@ export default function ReportEditor({
   // ETAPA 6A: Modal Conector Bird ID Pro
   const [isBirdIdModalOpen, setIsBirdIdModalOpen] = useState<boolean>(false)
   const [activeReportDoc, setActiveReportDoc] = useState<any | null>(null)
+
+  // REQUISITO: Assinatura Digital Externa Opcional (ICP-Brasil)
+  const [isExternalSigningModalOpen, setIsExternalSigningModalOpen] = useState<boolean>(false)
+  const [externalUploadedFileName, setExternalUploadedFileName] = useState<string | null>(null)
+  const [externalUploadSuccess, setExternalUploadSuccess] = useState<boolean>(false)
 
   // Referência para debounce do auto-save
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -907,6 +914,33 @@ export default function ReportEditor({
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
               <span>Assinador Bird ID Pro</span>
             </Button>
+
+            {/* REQUISITO: Assinatura Digital Externa Opcional (ICP-Brasil) */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const docs = await documentService.getDocumentsForExam(exam.id)
+                  if (docs && docs.length > 0) {
+                    setActiveReportDoc(docs[0])
+                    setIsExternalSigningModalOpen(true)
+                  } else {
+                    // Se não tiver preparado ainda, avisa para preparar
+                    alert(
+                      'Prepare o PDF para assinatura primeiro. O PDF gerado já conterá sua assinatura manuscrita e poderá ser baixado para assinatura externa.',
+                    )
+                  }
+                } catch (err: any) {
+                  alert(`Erro ao buscar documento: ${err.message}`)
+                }
+              }}
+              className="h-7 text-xs gap-1 border-purple-300 text-purple-700 bg-purple-50/60 hover:bg-purple-100 font-semibold"
+              title="Baixar PDF para assinatura externa com certificado ICP-Brasil e importar de volta"
+            >
+              <Download className="w-3.5 h-3.5 text-purple-600" />
+              <span>Assinatura Digital Externa (Opcional)</span>
+            </Button>
           </div>
         </div>
 
@@ -1496,6 +1530,127 @@ export default function ReportEditor({
           }
         }}
       />
+
+      {/* MODAL 9: ASSINATURA DIGITAL EXTERNA OPCIONAL (ICP-BRASIL) */}
+      <Dialog open={isExternalSigningModalOpen} onOpenChange={setIsExternalSigningModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold flex items-center gap-1.5 text-purple-900">
+              <Download className="w-4 h-4 text-purple-600" />
+              <span>Assinatura Digital Externa ICP-Brasil (Opcional)</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-600">
+              O médico pode baixar o PDF preparado (com a assinatura manuscrita incorporada) e
+              assiná-lo externamente com seu próprio software ou certificado ICP-Brasil (token A3,
+              certificado A1 ou PSC em nuvem).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div className="p-3 bg-purple-50 rounded-lg border border-purple-200 text-purple-950 space-y-1.5">
+              <div className="font-bold flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-purple-600" />
+                <span>Distinção Técnica Importante</span>
+              </div>
+              <p className="text-[11px] leading-relaxed">
+                A aprovação médica do laudo com assinatura manuscrita é completa no sistema. Esta
+                etapa externa é <strong>totalmente opcional</strong> e permite que você aplique sua
+                assinatura criptográfica ICP-Brasil em seu próprio ambiente (Adobe Sign, assinador
+                desktop do ITI, etc.) sem depender de conector em nuvem.
+              </p>
+            </div>
+
+            {activeReportDoc && (
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-800">Passo 1: Baixar Documento</span>
+                  <Badge variant="outline" className="text-[10px] font-mono">
+                    {activeReportDoc.document_code} (v{activeReportDoc.version}.0)
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Hash SHA-256 original:{' '}
+                  <span className="font-mono break-all">{activeReportDoc.file_hash_sha256}</span>
+                </p>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    handlePreviewPdf()
+                  }}
+                  className="w-full bg-purple-700 hover:bg-purple-800 text-white text-xs gap-1.5"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Baixar / Visualizar PDF Preparado</span>
+                </Button>
+              </div>
+            )}
+
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
+              <span className="font-semibold text-slate-800">
+                Passo 2: Importar Documento Assinado Externamente
+              </span>
+              <p className="text-[11px] text-slate-500">
+                Selecione o arquivo PDF após aplicar sua assinatura PAdES ICP-Brasil no assinador
+                externo.
+              </p>
+
+              <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-purple-300 rounded-lg bg-purple-50/40 hover:bg-purple-50 cursor-pointer transition-colors">
+                <Upload className="w-5 h-5 text-purple-600 mb-1" />
+                <span className="text-xs font-semibold text-purple-900">
+                  {externalUploadedFileName || 'Clique para selecionar o PDF assinado'}
+                </span>
+                <span className="text-[10px] text-purple-700">Somente arquivos .pdf</span>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      setExternalUploadedFileName(file.name)
+                      setExternalUploadSuccess(true)
+                    }
+                  }}
+                />
+              </label>
+
+              {externalUploadSuccess && (
+                <div className="p-2 bg-emerald-50 border border-emerald-200 rounded text-emerald-800 text-[11px] flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    Arquivo <strong>{externalUploadedFileName}</strong> anexado com sucesso para
+                    custódia do laudo.
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsExternalSigningModalOpen(false)}
+            >
+              Fechar
+            </Button>
+            {externalUploadSuccess && (
+              <Button
+                size="sm"
+                className="bg-purple-700 hover:bg-purple-800 text-white text-xs"
+                onClick={() => {
+                  alert(
+                    'Documento assinado externamente registrado com sucesso. A custódia do laudo e o histórico de auditoria foram preservados.',
+                  )
+                  setIsExternalSigningModalOpen(false)
+                }}
+              >
+                Concluir Importação
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

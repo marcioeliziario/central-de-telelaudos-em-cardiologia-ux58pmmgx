@@ -3191,6 +3191,32 @@ onRecordCreateRequest((e) => {
     }
   }
 
+  // 2.1 Bloquear criação de contratos, preços e fechamentos por usuários não autorizados
+  if (
+    collectionName === 'commercial_contracts' ||
+    collectionName === 'price_tables' ||
+    collectionName === 'monthly_closings' ||
+    collectionName === 'billing_adjustments'
+  ) {
+    if (!authRecord) {
+      throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+    }
+    const userOrgs = $app.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${authRecord.id}' && is_active = true`,
+      '',
+      50,
+      0,
+    )
+    const isAdmin = userOrgs.some((uo) => uo.get('role') === 'admin')
+    const isFinance = userOrgs.some((uo) => uo.get('role') === 'financial')
+    if (!isAdmin && !isFinance) {
+      throw new ForbiddenError(
+        'Apenas o administrador geral ou perfil financeiro pode criar contratos comerciais, regras de preço ou fechamentos.',
+      )
+    }
+  }
+
   // 3. Usuários de clínicas NÃO podem criar laudos ou rascunhos de laudo
   if (collectionName === 'ecg_reports' || collectionName === 'report_drafts') {
     if (!authRecord) {
@@ -3301,6 +3327,66 @@ onRecordUpdateRequest((e) => {
     throw new ForbiddenError(
       'Documentos médicos preparados para assinatura são estritamente imutáveis. Crie uma nova versão para qualquer correção.',
     )
+  }
+
+  // 0.1 Bloquear alteração indevida de valores consolidados em fechamentos e itens de cobrança
+  if (collectionName === 'monthly_closings') {
+    if (!authRecord) {
+      throw new ForbiddenError('Acesso não autorizado.')
+    }
+    const userOrgs = $app.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${authRecord.id}' && is_active = true`,
+      '',
+      50,
+      0,
+    )
+    const isAdmin = userOrgs.some((uo) => uo.get('role') === 'admin')
+    const isFinance = userOrgs.some((uo) => uo.get('role') === 'financial')
+
+    if (!isAdmin && !isFinance) {
+      throw new ForbiddenError(
+        'Operadores e usuários não autorizados não podem alterar valores de fechamentos consolidados.',
+      )
+    }
+
+    // Se o fechamento estiver consolidado (is_locked = true), impedir alteração de subtotal_amount direto
+    const oldLocked = e.record.original().getBool('is_locked')
+    const oldSubtotal = e.record.original().getFloat('subtotal_amount')
+    const newSubtotal = e.record.getFloat('subtotal_amount')
+
+    if (oldLocked && oldSubtotal !== newSubtotal) {
+      throw new ForbiddenError(
+        'Bloqueio de alteração indevida: os valores consolidados de um fechamento fechado não podem ser sobrescritos diretamente. Registre ajustes separadamente via billing_adjustments.',
+      )
+    }
+  }
+
+  // 0.2 Bloquear operadores de clínica de alterarem contratos comerciais, preços ou cobranças
+  if (
+    collectionName === 'commercial_contracts' ||
+    collectionName === 'price_tables' ||
+    collectionName === 'billing_items' ||
+    collectionName === 'billing_adjustments'
+  ) {
+    if (!authRecord) {
+      throw new ForbiddenError('Acesso não autorizado.')
+    }
+    const userOrgs = $app.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${authRecord.id}' && is_active = true`,
+      '',
+      50,
+      0,
+    )
+    const isAdmin = userOrgs.some((uo) => uo.get('role') === 'admin')
+    const isFinance = userOrgs.some((uo) => uo.get('role') === 'financial')
+
+    if (!isAdmin && !isFinance) {
+      throw new ForbiddenError(
+        'Operadores e usuários de clínica não têm permissão para criar ou modificar contratos comerciais, tabelas de preços ou cobranças consolidadas.',
+      )
+    }
   }
 
   // 1. Proteger alteração de role e organização em user_organizations

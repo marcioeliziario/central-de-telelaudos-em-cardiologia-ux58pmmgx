@@ -35,10 +35,12 @@ import {
   ShieldCheck,
   Lock,
   FileCheck2,
+  DollarSign,
 } from 'lucide-react'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
 import ResultsPortal from '@/components/ResultsPortal'
 import NotificationsPopover from '@/components/NotificationsPopover'
+import ClinicFinancialPortal from '@/components/ClinicFinancialPortal'
 
 export default function ClinicDashboard() {
   const { currentOrg, currentRole, user } = useAuth()
@@ -197,13 +199,20 @@ export default function ClinicDashboard() {
 
       {/* Tabs da Clínica com Portal de Resultados na vanguarda */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-5 w-full h-auto p-1 bg-slate-200/80 gap-1 text-xs">
+        <TabsList className="grid grid-cols-3 sm:grid-cols-6 w-full h-auto p-1 bg-slate-200/80 gap-1 text-xs">
           <TabsTrigger
             value="portal"
             className="py-2 flex items-center justify-center gap-1.5 font-bold"
           >
             <FileCheck2 className="w-3.5 h-3.5 text-[#0E4C92]" />
             <span>Portal de Resultados</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="financial"
+            className="py-2 flex items-center justify-center gap-1.5 font-bold text-emerald-800 bg-emerald-100/50"
+          >
+            <DollarSign className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Faturamento & Fechamentos</span>
           </TabsTrigger>
           <TabsTrigger value="overview" className="py-2">
             Painel Geral
@@ -218,6 +227,13 @@ export default function ClinicDashboard() {
             Histórico Simples ({myExams.length})
           </TabsTrigger>
         </TabsList>
+
+        {/* DEMONSTRATIVOS FINANCEIROS DA CLÍNICA (ETAPA 7) */}
+        {currentOrg && (
+          <TabsContent value="financial" className="space-y-4 pt-4">
+            <ClinicFinancialPortal organization={currentOrg} />
+          </TabsContent>
+        )}
 
         {/* 0. PORTAL DE RESULTADOS (ETAPA 5) */}
         <TabsContent value="portal" className="space-y-4 pt-4">

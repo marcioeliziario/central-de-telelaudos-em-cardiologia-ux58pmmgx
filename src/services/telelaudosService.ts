@@ -513,3 +513,129 @@ export const notificationService = {
     })
   },
 }
+
+// -------------------------------------------------------------
+// SERVIÇOS FINANCEIROS (ETAPA 7)
+// -------------------------------------------------------------
+
+export const commercialContractService = {
+  async getAll(filter = ''): Promise<any[]> {
+    return await pb.collection('commercial_contracts').getFullList({
+      filter,
+      sort: '-created',
+      expand: 'provider_org_id,client_org_id,contract_sla_id',
+    })
+  },
+
+  async getById(id: string): Promise<any> {
+    return await pb.collection('commercial_contracts').getOne(id, {
+      expand: 'provider_org_id,client_org_id,contract_sla_id',
+    })
+  },
+
+  async create(data: Record<string, any>): Promise<any> {
+    return await pb.collection('commercial_contracts').create(data)
+  },
+
+  async update(id: string, data: Record<string, any>): Promise<any> {
+    return await pb.collection('commercial_contracts').update(id, data)
+  },
+}
+
+export const priceTableService = {
+  async getAll(filter = ''): Promise<any[]> {
+    return await pb.collection('price_tables').getFullList({
+      filter,
+      sort: '-created',
+      expand: 'contract_id,client_org_id',
+    })
+  },
+
+  async create(data: Record<string, any>): Promise<any> {
+    return await pb.collection('price_tables').create(data)
+  },
+
+  async update(id: string, data: Record<string, any>): Promise<any> {
+    return await pb.collection('price_tables').update(id, data)
+  },
+}
+
+export const monthlyClosingService = {
+  async getAll(filter = ''): Promise<any[]> {
+    return await pb.collection('monthly_closings').getFullList({
+      filter,
+      sort: '-competence_period,-created',
+      expand: 'provider_org_id,client_org_id,contract_id',
+    })
+  },
+
+  async getById(id: string): Promise<any> {
+    return await pb.collection('monthly_closings').getOne(id, {
+      expand: 'provider_org_id,client_org_id,contract_id',
+    })
+  },
+
+  async generateClosing(clientOrgId: string, competencePeriod: string): Promise<any> {
+    return await pb.send('/backend/v1/finance/closings/generate', {
+      method: 'POST',
+      body: {
+        client_org_id: clientOrgId,
+        competence_period: competencePeriod,
+      },
+    })
+  },
+
+  async addAdjustment(
+    closingId: string,
+    data: {
+      adjustment_type: string
+      amount: number
+      justification: string
+    },
+  ): Promise<any> {
+    return await pb.send(`/backend/v1/finance/closings/${closingId}/adjustments`, {
+      method: 'POST',
+      body: data,
+    })
+  },
+
+  async registerPayment(closingId: string, amount: number): Promise<any> {
+    return await pb.send(`/backend/v1/finance/closings/${closingId}/payment`, {
+      method: 'POST',
+      body: { amount },
+    })
+  },
+
+  async exportStatement(closingId: string, format: 'json' | 'csv' = 'json'): Promise<any> {
+    return await pb.send(`/backend/v1/finance/closings/${closingId}/export?format=${format}`, {
+      method: 'GET',
+    })
+  },
+}
+
+export const billingService = {
+  async getAll(filter = ''): Promise<any[]> {
+    return await pb.collection('billing_items').getFullList({
+      filter,
+      sort: '-created',
+      expand: 'exam_request_id,report_document_id,client_org_id,reporting_doctor_id',
+    })
+  },
+
+  async generateFromReport(examRequestId: string, reportDocumentId: string): Promise<any> {
+    return await pb.send('/backend/v1/finance/billing/generate-from-report', {
+      method: 'POST',
+      body: {
+        exam_request_id: examRequestId,
+        report_document_id: reportDocumentId,
+      },
+    })
+  },
+
+  async getMedicalProduction(period = ''): Promise<any> {
+    const url = period
+      ? `/backend/v1/finance/medical-production?period=${encodeURIComponent(period)}`
+      : '/backend/v1/finance/medical-production'
+    return await pb.send(url, { method: 'GET' })
+  },
+}

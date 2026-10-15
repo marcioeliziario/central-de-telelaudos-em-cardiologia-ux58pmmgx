@@ -469,3 +469,177 @@ export interface BirdIdStatusResponse {
     checksum: string
   }>
 }
+
+// -------------------------------------------------------------
+// ETAPA 7: GESTÃO FINANCEIRA, CONTRATOS E FATURAMENTO
+// -------------------------------------------------------------
+
+export type CommercialContractStatus = 'draft' | 'active' | 'suspended' | 'cancelled' | 'expired'
+
+export interface CommercialContract {
+  id: string
+  provider_org_id: string
+  client_org_id: string
+  contract_sla_id?: string
+  contract_number: string
+  start_date: string
+  end_date?: string
+  status: CommercialContractStatus
+  modalities: string // JSON string array
+  closing_day: number
+  payment_terms_days: number
+  monthly_minimum_volume?: number
+  monthly_minimum_amount?: number
+  cancellation_rules?: string
+  billing_notes?: string
+  change_history?: string // JSON string
+  created_by?: string
+  created: string
+  updated: string
+  expand?: {
+    provider_org_id?: Organization
+    client_org_id?: Organization
+    contract_sla_id?: ContractSLA
+  }
+}
+
+export interface PriceTable {
+  id: string
+  contract_id: string
+  client_org_id: string
+  modality: 'ECG_12_DERIVACOES' | 'ECG_RITMO' | 'OUTRA'
+  urgency: 'routine' | 'urgent' | 'emergency'
+  price_amount: number
+  valid_from: string
+  valid_to?: string
+  is_active: boolean
+  notes?: string
+  created: string
+  updated: string
+  expand?: {
+    contract_id?: CommercialContract
+    client_org_id?: Organization
+  }
+}
+
+export type MonthlyClosingStatus =
+  | 'open'
+  | 'closed'
+  | 'invoiced_simulated_blocked'
+  | 'paid'
+  | 'cancelled'
+
+export type ClosingPaymentStatus = 'pending' | 'paid_partial' | 'paid' | 'overdue'
+
+export interface MonthlyClosing {
+  id: string
+  provider_org_id: string
+  client_org_id: string
+  contract_id: string
+  competence_period: string // "2026-10"
+  closing_code: string
+  period_start: string
+  period_end: string
+  status: MonthlyClosingStatus
+  total_exams: number
+  billable_exams: number
+  subtotal_amount: number
+  discounts_adjustments_amount?: number
+  final_total_amount: number
+  summary_by_modality?: string // JSON string
+  summary_by_priority?: string // JSON string
+  is_locked: boolean
+  closed_at?: string
+  closed_by?: string
+  payment_due_date?: string
+  payment_status?: ClosingPaymentStatus
+  payment_received_amount?: number
+  payment_received_at?: string
+  notes?: string
+  created: string
+  updated: string
+  expand?: {
+    provider_org_id?: Organization
+    client_org_id?: Organization
+    contract_id?: CommercialContract
+  }
+}
+
+export type BillingType =
+  | 'LAUDO_PADRAO'
+  | 'LAUDO_URGENTE'
+  | 'REANÁLISE_CONTRATUAL'
+  | 'ADICIONAL_AUTORIZADO'
+
+export type BillingItemStatus =
+  | 'draft_prohibited'
+  | 'billable'
+  | 'closed'
+  | 'adjusted'
+  | 'cancelled'
+
+export interface BillingItem {
+  id: string
+  exam_request_id: string
+  report_document_id: string
+  provider_org_id: string
+  client_org_id: string
+  contract_id: string
+  price_table_id?: string
+  monthly_closing_id?: string
+  billing_type: BillingType
+  idempotency_key: string
+  competence_period: string
+  modality: string
+  urgency: string
+  unit_price_snapshotted: number
+  price_snapshot_date: string
+  status: BillingItemStatus
+  reporting_doctor_id?: string
+  is_rectification?: boolean
+  parent_billing_item_id?: string
+  notes?: string
+  created: string
+  updated: string
+  expand?: {
+    exam_request_id?: ExamRequest
+    report_document_id?: ReportDocument
+    client_org_id?: Organization
+    contract_id?: CommercialContract
+    reporting_doctor_id?: Doctor
+  }
+}
+
+export type AdjustmentType =
+  | 'DESCONTO_COMERCIAL'
+  | 'ESTORNO_QUALIDADE'
+  | 'ACRESCIMO_CONTRATUAL'
+  | 'OUTRO_AJUSTE'
+
+export interface BillingAdjustment {
+  id: string
+  monthly_closing_id: string
+  billing_item_id?: string
+  client_org_id: string
+  adjustment_type: AdjustmentType
+  amount: number
+  justification: string
+  authorized_by?: string
+  authorized_at: string
+  created: string
+  updated: string
+  expand?: {
+    monthly_closing_id?: MonthlyClosing
+    client_org_id?: Organization
+  }
+}
+
+export interface MedicalProductionItem {
+  doctorId: string
+  doctorName: string
+  crm: string
+  specialty: string
+  reportsIssuedCount: number
+  remunerationRuleStatus: string
+  financialTransferAmount: number | null
+}

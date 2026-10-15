@@ -46,9 +46,11 @@ import {
   AlertTriangle,
   Activity,
   RotateCcw,
+  DollarSign,
 } from 'lucide-react'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
 import NotificationsPopover from '@/components/NotificationsPopover'
+import FinancialManagementModule from '@/components/FinancialManagementModule'
 
 export default function AdminDashboard() {
   const { user } = useAuth()
@@ -165,16 +167,23 @@ export default function AdminDashboard() {
             variant="outline"
             className="bg-emerald-50 text-emerald-900 border-emerald-300 py-1 text-xs"
           >
-            Etapa 5 — SLA & Notificações Ativos
+            v0.0.11 — Etapa 7: Gestão Financeira & Contratos
           </Badge>
         </div>
       </div>
 
       {/* Tabs de Navegação do Administrador */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-8 w-full h-auto p-1 bg-slate-200/80 gap-1 text-xs">
+        <TabsList className="grid grid-cols-3 sm:grid-cols-9 w-full h-auto p-1 bg-slate-200/80 gap-1 text-xs">
           <TabsTrigger value="overview" className="py-2">
             Geral
+          </TabsTrigger>
+          <TabsTrigger
+            value="finance"
+            className="py-2 font-bold text-emerald-800 bg-emerald-100/60"
+          >
+            <DollarSign className="w-3.5 h-3.5 mr-1 text-emerald-700 inline" />
+            Financeiro
           </TabsTrigger>
           <TabsTrigger value="sla" className="py-2 font-bold text-[#0E4C92]">
             Contratos SLA
@@ -198,6 +207,11 @@ export default function AdminDashboard() {
             Auditoria
           </TabsTrigger>
         </TabsList>
+
+        {/* TAB FINANCEIRA: GESTÃO DE CONTRATOS, PREÇOS E FECHAMENTOS (ETAPA 7) */}
+        <TabsContent value="finance" className="space-y-4 pt-4">
+          <FinancialManagementModule organizations={organizations} onRefreshData={loadData} />
+        </TabsContent>
 
         {/* TAB DE CONTRATOS & CONTROLE DE PRAZOS (SLA) */}
         <TabsContent value="sla" className="space-y-4 pt-4">

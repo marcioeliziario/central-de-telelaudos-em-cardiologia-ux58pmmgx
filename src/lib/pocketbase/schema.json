@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T15:32:17.417Z",
+  "generatedAt": "2026-10-15T15:50:32.968Z",
   "collections": [
     {
       "name": "users",
@@ -1852,6 +1852,659 @@
         "CREATE INDEX idx_sla_exec_job ON sla_job_executions (job_id)",
         "CREATE INDEX idx_sla_exec_status ON sla_job_executions (status)",
         "CREATE INDEX idx_sla_exec_started ON sla_job_executions (started_at DESC)"
+      ]
+    },
+    {
+      "name": "commercial_contracts",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "provider_org_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "organizations"
+        },
+        {
+          "name": "client_org_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "organizations"
+        },
+        {
+          "name": "contract_sla_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "contract_slas"
+        },
+        {
+          "name": "contract_number",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "start_date",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "end_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["draft", "active", "suspended", "cancelled", "expired"]
+        },
+        {
+          "name": "modalities",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "closing_day",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "payment_terms_days",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "monthly_minimum_volume",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "monthly_minimum_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cancellation_rules",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "billing_notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "change_history",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_comm_contract_num ON commercial_contracts (contract_number)",
+        "CREATE INDEX idx_comm_contract_client ON commercial_contracts (client_org_id)",
+        "CREATE INDEX idx_comm_contract_provider ON commercial_contracts (provider_org_id)",
+        "CREATE INDEX idx_comm_contract_status ON commercial_contracts (status)"
+      ]
+    },
+    {
+      "name": "price_tables",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "contract_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "commercial_contracts"
+        },
+        {
+          "name": "client_org_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "organizations"
+        },
+        {
+          "name": "modality",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["ECG_12_DERIVACOES", "ECG_RITMO", "OUTRA"]
+        },
+        {
+          "name": "urgency",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["routine", "urgent", "emergency"]
+        },
+        {
+          "name": "price_amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valid_from",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valid_to",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_prices_contract ON price_tables (contract_id)",
+        "CREATE INDEX idx_prices_client ON price_tables (client_org_id)",
+        "CREATE INDEX idx_prices_mod_urg ON price_tables (modality, urgency)"
+      ]
+    },
+    {
+      "name": "monthly_closings",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "provider_org_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "organizations"
+        },
+        {
+          "name": "client_org_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "organizations"
+        },
+        {
+          "name": "contract_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "commercial_contracts"
+        },
+        {
+          "name": "competence_period",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "closing_code",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "period_start",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "period_end",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["open", "closed", "invoiced_simulated_blocked", "paid", "cancelled"]
+        },
+        {
+          "name": "total_exams",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "billable_exams",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "subtotal_amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "discounts_adjustments_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "final_total_amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "summary_by_modality",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "summary_by_priority",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_locked",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "closed_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "closed_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "payment_due_date",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payment_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["pending", "paid_partial", "paid", "overdue"]
+        },
+        {
+          "name": "payment_received_amount",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "payment_received_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_closing_code ON monthly_closings (closing_code)",
+        "CREATE INDEX idx_closing_comp_client ON monthly_closings (competence_period, client_org_id)",
+        "CREATE INDEX idx_closing_provider ON monthly_closings (provider_org_id)",
+        "CREATE INDEX idx_closing_status ON monthly_closings (status)"
+      ]
+    },
+    {
+      "name": "billing_items",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "exam_request_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "exam_requests"
+        },
+        {
+          "name": "report_document_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "report_documents"
+        },
+        {
+          "name": "provider_org_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "organizations"
+        },
+        {
+          "name": "client_org_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "organizations"
+        },
+        {
+          "name": "contract_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "commercial_contracts"
+        },
+        {
+          "name": "price_table_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "price_tables"
+        },
+        {
+          "name": "monthly_closing_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "monthly_closings"
+        },
+        {
+          "name": "billing_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "LAUDO_PADRAO",
+            "LAUDO_URGENTE",
+            "REANÁLISE_CONTRATUAL",
+            "ADICIONAL_AUTORIZADO"
+          ]
+        },
+        {
+          "name": "idempotency_key",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "competence_period",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "modality",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "urgency",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "unit_price_snapshotted",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "price_snapshot_date",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["draft_prohibited", "billable", "closed", "adjusted", "cancelled"]
+        },
+        {
+          "name": "reporting_doctor_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "doctors"
+        },
+        {
+          "name": "is_rectification",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "parent_billing_item_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_billing_idempotency ON billing_items (idempotency_key)",
+        "CREATE INDEX idx_billing_exam ON billing_items (exam_request_id)",
+        "CREATE INDEX idx_billing_client_comp ON billing_items (client_org_id, competence_period)",
+        "CREATE INDEX idx_billing_closing ON billing_items (monthly_closing_id)",
+        "CREATE INDEX idx_billing_doctor ON billing_items (reporting_doctor_id)"
+      ]
+    },
+    {
+      "name": "billing_adjustments",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "monthly_closing_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "monthly_closings"
+        },
+        {
+          "name": "billing_item_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "billing_items"
+        },
+        {
+          "name": "client_org_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "organizations"
+        },
+        {
+          "name": "adjustment_type",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": [
+            "DESCONTO_COMERCIAL",
+            "ESTORNO_QUALIDADE",
+            "ACRESCIMO_CONTRATUAL",
+            "OUTRO_AJUSTE"
+          ]
+        },
+        {
+          "name": "amount",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "justification",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "authorized_by",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "authorized_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_adj_closing ON billing_adjustments (monthly_closing_id)",
+        "CREATE INDEX idx_adj_client ON billing_adjustments (client_org_id)"
       ]
     }
   ]

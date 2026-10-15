@@ -194,11 +194,15 @@ export default function SecurityTestRunnerModal({
           <DialogHeader>
             <DialogTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-emerald-600" />
-              <span>Bateria de Validação Automatizada (Etapas 1, 3, 4A, 4B e 5)</span>
+              <span>
+                Bateria de Validação Automatizada (Etapas 1 a 7: Contratos, Faturamento e
+                Fechamentos)
+              </span>
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
               Chamadas reais autenticadas ao backend PocketBase testando isolamento, atomicidade,
-              portal de resultados, SLA, notificações e integridade probatória
+              portal de resultados, SLA, conector Bird ID Pro, contratos comerciais, faturamento
+              faturável único e fechamentos mensais
             </DialogDescription>
           </DialogHeader>
 
@@ -221,7 +225,8 @@ export default function SecurityTestRunnerModal({
         <div className="flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-emerald-600" />
           <CardTitle className="text-sm text-slate-900 font-bold">
-            Validação Efetiva de Segurança, Fila, Portal de Resultados e SLA (Etapa 5)
+            Validação Efetiva de Segurança, Fila, Portal de Resultados, SLA e Gestão Financeira
+            (Etapa 7)
           </CardTitle>
         </div>
       </CardHeader>

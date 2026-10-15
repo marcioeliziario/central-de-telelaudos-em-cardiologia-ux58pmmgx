@@ -3350,12 +3350,14 @@ onRecordUpdateRequest((e) => {
       )
     }
 
-    // Se o fechamento estiver consolidado (is_locked = true), impedir alteração de subtotal_amount direto
+    // Se o fechamento estiver consolidado (is_locked = true), impedir alteração de subtotal_amount, final_total_amount ou billable_exams direto
     const oldLocked = e.record.original().getBool('is_locked')
     const oldSubtotal = e.record.original().getFloat('subtotal_amount')
     const newSubtotal = e.record.getFloat('subtotal_amount')
+    const oldFinal = e.record.original().getFloat('final_total_amount')
+    const newFinal = e.record.getFloat('final_total_amount')
 
-    if (oldLocked && oldSubtotal !== newSubtotal) {
+    if (oldLocked && (oldSubtotal !== newSubtotal || oldFinal !== newFinal)) {
       throw new ForbiddenError(
         'Bloqueio de alteração indevida: os valores consolidados de um fechamento fechado não podem ser sobrescritos diretamente. Registre ajustes separadamente via billing_adjustments.',
       )

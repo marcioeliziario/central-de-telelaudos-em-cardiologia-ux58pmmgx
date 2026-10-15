@@ -167,7 +167,7 @@ export default function AdminDashboard() {
             variant="outline"
             className="bg-emerald-50 text-emerald-900 border-emerald-300 py-1 text-xs"
           >
-            v0.0.11 — Etapa 7: Gestão Financeira & Contratos
+            v0.0.12 — Etapa 7B: Homologação Financeira & Testes Integrados
           </Badge>
         </div>
       </div>

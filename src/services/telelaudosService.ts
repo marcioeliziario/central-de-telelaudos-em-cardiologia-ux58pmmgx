@@ -606,9 +606,22 @@ export const monthlyClosingService = {
     })
   },
 
-  async exportStatement(closingId: string, format: 'json' | 'csv' = 'json'): Promise<any> {
+  async exportStatement(closingId: string, format: 'json' | 'csv' | 'pdf' = 'json'): Promise<any> {
     return await pb.send(`/backend/v1/finance/closings/${closingId}/export?format=${format}`, {
       method: 'GET',
+    })
+  },
+
+  async createHomologationBillingItem(data: {
+    client_org_id: string
+    urgency?: 'routine' | 'urgent'
+    competence_period?: string
+    is_rectification?: boolean
+    idempotency_key?: string
+  }): Promise<any> {
+    return await pb.send('/backend/v1/finance/billing/test-fixture-item', {
+      method: 'POST',
+      body: data,
     })
   },
 }

@@ -263,8 +263,8 @@ export default function FinancialManagementModule({
     }
   }
 
-  // Exportar demonstrativo
-  const handleExport = async (closingId: string, format: 'json' | 'csv') => {
+  // Exportar demonstrativo (CSV, JSON ou PDF homologado no backend)
+  const handleExport = async (closingId: string, format: 'json' | 'csv' | 'pdf') => {
     try {
       const res = await monthlyClosingService.exportStatement(closingId, format)
       if (format === 'csv' && res.csvContent) {
@@ -275,8 +275,18 @@ export default function FinancialManagementModule({
         a.download = `demonstrativo_${res.closingCode || closingId}.csv`
         a.click()
         URL.revokeObjectURL(url)
+      } else if (format === 'pdf' && res.pdfRawString) {
+        const blob = new Blob([res.pdfRawString], { type: 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `demonstrativo_${res.closingCode || closingId}.pdf`
+        a.click()
+        URL.revokeObjectURL(url)
       } else {
-        alert(`Demonstrativo exportado com sucesso: ${res.closing?.closing_code || 'Consistente'}`)
+        alert(
+          `Demonstrativo exportado com sucesso: ${res.closing?.closing_code || res.closingCode || 'Consistente'}`,
+        )
       }
     } catch (err: any) {
       alert(`Erro ao exportar demonstrativo: ${err.message}`)
@@ -963,11 +973,21 @@ export default function FinancialManagementModule({
                     <Button
                       size="sm"
                       variant="outline"
+                      onClick={() => handleExport(c.id, 'pdf')}
+                      className="text-xs h-8 gap-1 border-blue-300 text-blue-700 hover:bg-blue-50"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Demonstrativo PDF</span>
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
                       onClick={() => handleExport(c.id, 'csv')}
                       className="text-xs h-8 gap-1 border-slate-300"
                     >
                       <Download className="w-3.5 h-3.5 text-slate-600" />
-                      <span>Exportar CSV</span>
+                      <span>CSV</span>
                     </Button>
 
                     <Button

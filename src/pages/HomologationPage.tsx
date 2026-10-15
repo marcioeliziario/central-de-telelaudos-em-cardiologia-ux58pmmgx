@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Layers,
   Terminal,
+  DollarSign,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -1022,6 +1023,87 @@ export default function HomologationPage() {
                     estritamente bloqueada até que o checklist dos 7 critérios criptográficos seja
                     comprovado em produção com o certificado real do cardiologista.
                   </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* ETAPA 7B: HOMOLOGAÇÃO FINANCEIRA, CONTRATOS, PREÇOS E FECHAMENTOS */}
+            <Card className="border-slate-300">
+              <CardHeader className="bg-slate-50 border-b border-slate-200 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-emerald-600" />
+                    <CardTitle className="text-sm text-slate-900 font-bold">
+                      (9) Etapa 7B — Homologação Financeira, Contratos Comerciais & Faturamento
+                    </CardTitle>
+                  </div>
+                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs">
+                    HOMOLOGAÇÃO CONCLUÍDA
+                  </Badge>
+                </div>
+                <CardDescription className="text-xs text-slate-600">
+                  Regras de negócio financeiras homologadas: isolamento entre clínicas, cobrança
+                  única por laudo (idempotência real), congelamento de preços históricos na
+                  solicitação, fechamento mensal auditado e demonstrativo financeiro em
+                  PDF/CSV/JSON.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 space-y-3 text-xs text-slate-700 leading-relaxed">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <strong className="text-slate-900 block font-semibold">
+                      Regras de Faturamento e Preço Homologadas:
+                    </strong>
+                    <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-600">
+                      <li>
+                        <strong>Momento de Captura do Preço:</strong> Snapshot congelado com base na
+                        data da solicitação do exame (<code>created</code> / <code>exam_date</code>
+                        ), blindando a clínica contra reajustes contratuais posteriores até a
+                        liberação médica.
+                      </li>
+                      <li>
+                        <strong>Cobrança Única & Idempotência Real:</strong> Chave única composta e
+                        índice UNIQUE no banco impedem faturamento duplicado por exame.
+                      </li>
+                      <li>
+                        <strong>Retificações Médicas Sem Cobrança:</strong> Laudos retificados geram
+                        item de revisão com valor R$ 0,00 sem onerar a clínica contratante.
+                      </li>
+                      <li>
+                        <strong>Exames Não Assinados Bloqueados:</strong> Exames em elaboração ou
+                        sem liberação clínica são rejeitados pelo faturamento com HTTP 400/403.
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="space-y-2">
+                    <strong className="text-slate-900 block font-semibold">
+                      Segurança, Auditoria e Exportação:
+                    </strong>
+                    <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-600">
+                      <li>
+                        <strong>Isolamento Multi-Tenant:</strong> Clínicas só visualizam
+                        demonstrativos e itens de sua própria organização; tentativas de acesso
+                        cruzado retornam 403.
+                      </li>
+                      <li>
+                        <strong>Valores Consolidados Imutáveis:</strong> Fechamentos com{' '}
+                        <code>is_locked=true</code>
+                        não admitem alteração direta de subtotal ou total; ajustes exigem registro
+                        formal justificado.
+                      </li>
+                      <li>
+                        <strong>Demonstrativo em PDF Nativo:</strong> Geração no backend com
+                        acentuação WinAnsi, hash SHA-256 e sem PII sensível de pacientes
+                        (conformidade LGPD).
+                      </li>
+                      <li>
+                        <strong>Produção Médica Consciente:</strong> Exibe quantidade de laudos
+                        emitidos; repasses e honorários permanecem bloqueados sem contrato médico
+                        nesta etapa.
+                      </li>
+                    </ul>
+                  </div>
                 </div>
               </CardContent>
             </Card>

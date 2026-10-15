@@ -58,6 +58,23 @@ export default function ClinicFinancialPortal({ organization }: ClinicFinancialP
     }
   }
 
+  const handleExportPdf = async (closingId: string) => {
+    try {
+      const res = await monthlyClosingService.exportStatement(closingId, 'pdf')
+      if (res.pdfRawString) {
+        const blob = new Blob([res.pdfRawString], { type: 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `demonstrativo_${res.closingCode || closingId}.pdf`
+        a.click()
+        URL.revokeObjectURL(url)
+      }
+    } catch (err: any) {
+      alert(`Erro ao exportar PDF: ${err.message}`)
+    }
+  }
+
   const handleViewStatement = async (c: MonthlyClosing) => {
     setSelectedClosing(c)
     try {
@@ -160,15 +177,27 @@ export default function ClinicFinancialPortal({ organization }: ClinicFinancialP
                   <span>Ver Detalhes</span>
                 </Button>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleExportCsv(c.id)}
-                  className="text-xs h-7 gap-1 border-slate-300"
-                >
-                  <Download className="w-3 h-3 text-slate-600" />
-                  <span>Baixar CSV</span>
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleExportPdf(c.id)}
+                    className="text-xs h-7 gap-1 border-blue-200 text-blue-700 hover:bg-blue-50"
+                  >
+                    <FileText className="w-3 h-3 text-blue-600" />
+                    <span>PDF</span>
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleExportCsv(c.id)}
+                    className="text-xs h-7 gap-1 border-slate-300"
+                  >
+                    <Download className="w-3 h-3 text-slate-600" />
+                    <span>CSV</span>
+                  </Button>
+                </div>
               </div>
             </Card>
           ))

@@ -131,20 +131,41 @@ routerAdd('POST', '/backend/v1/finance/billing/generate-from-report', (e) => {
 
   const providerOrgId = contract.getString('provider_org_id')
 
-  // REGRA ESTRITA 5: Tabela de Preços com Vigência e Preço Capturado/Snapshotted
+  // REGRA ESTRITA 5: Tabela de Preços com Vigência e Preço Capturado/Snapshotted no Momento da Solicitação/Realização
+  // REGRA DE CAPTURA DO PREÇO DOCUMENTADA:
+  // O preço contratual é capturado e congelado (snapshot) com base na data da solicitação do exame (exam_requests.created ou exam_date).
+  // Isso garante previsibilidade e segurança jurídica: caso haja um reajuste de tabela entre a solicitação/realização
+  // e a liberação formal do laudo pelo cardiologista, o exame é faturado pelo valor vigente quando o exame foi demandado.
+  // Uma vez gravado em billing_items.unit_price_snapshotted, o valor torna-se imutável.
+  const referenceDate =
+    exam.getString('created') || exam.getString('exam_date') || new Date().toISOString()
   let priceAmount = 25.0
   let priceTableId = ''
   try {
+    // 1. Tentar buscar tabela com vigência estrita na data de solicitação do exame
     const prices = $app.findRecordsByFilter(
       'price_tables',
-      `client_org_id = '${clientOrgId}' && modality = '${modality}' && urgency = '${urgency}' && is_active = true`,
-      '-created',
+      `client_org_id = '${clientOrgId}' && modality = '${modality}' && urgency = '${urgency}' && valid_from <= '${referenceDate}' && (valid_to = '' || valid_to >= '${referenceDate}')`,
+      '-valid_from',
       1,
       0,
     )
     if (prices.length > 0) {
       priceAmount = prices[0].getFloat('price_amount')
       priceTableId = prices[0].id
+    } else {
+      // 2. Fallback para tabela ativa vigente
+      const activePrices = $app.findRecordsByFilter(
+        'price_tables',
+        `client_org_id = '${clientOrgId}' && modality = '${modality}' && urgency = '${urgency}' && is_active = true`,
+        '-created',
+        1,
+        0,
+      )
+      if (activePrices.length > 0) {
+        priceAmount = activePrices[0].getFloat('price_amount')
+        priceTableId = activePrices[0].id
+      }
     }
   } catch (_) {}
 
@@ -591,6 +612,152 @@ routerAdd('POST', '/backend/v1/finance/closings/{id}/payment', (e) => {
 })
 
 // ------------------------------------------------------------------------------------------------
+// 4.1 ROTA DE HOMOLOGAÇÃO FINANCEIRA CONTROLADA (IS_TEST / FIXTURE CONTROLADA)
+// Permite exercitar o ciclo de faturamento e fechamento de homologação sem fraudar assinatura digital real
+// ------------------------------------------------------------------------------------------------
+routerAdd('POST', '/backend/v1/finance/billing/test-fixture-item', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const userOrgs = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isFinanceOrAdmin = userOrgs.some(
+    (uo) => uo.get('role') === 'admin' || uo.get('role') === 'financial',
+  )
+  if (!isFinanceOrAdmin) {
+    throw new ForbiddenError(
+      'Apenas administradores ou financeiro podem gerar fixtures de teste financeiro.',
+    )
+  }
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const clientOrgId = body.client_org_id
+  const urgency = body.urgency || 'routine'
+  const competencePeriod = body.competence_period || '2026-10'
+  const isRectification = Boolean(body.is_rectification)
+
+  if (!clientOrgId) {
+    throw new BadRequestError('client_org_id é obrigatório.')
+  }
+
+  // Buscar contrato comercial
+  const contracts = $app.findRecordsByFilter(
+    'commercial_contracts',
+    `client_org_id = '${clientOrgId}' && status = 'active'`,
+    '-created',
+    1,
+    0,
+  )
+  if (contracts.length === 0) {
+    throw new BadRequestError('Contrato não localizado para esta clínica.')
+  }
+  const contract = contracts[0]
+
+  // Buscar preço de tabela
+  let price = urgency === 'urgent' ? 40.0 : 25.0
+  let priceTableId = ''
+  try {
+    const prices = $app.findRecordsByFilter(
+      'price_tables',
+      `client_org_id = '${clientOrgId}' && urgency = '${urgency}' && is_active = true`,
+      '-created',
+      1,
+      0,
+    )
+    if (prices.length > 0) {
+      price = prices[0].getFloat('price_amount')
+      priceTableId = prices[0].id
+    }
+  } catch (_) {}
+
+  // REGRA DE RETIFICAÇÃO: Retificações médicas de laudo NÃO criam cobrança adicional
+  if (isRectification) {
+    price = 0.0
+  }
+
+  const billingType = urgency === 'urgent' ? 'LAUDO_URGENTE' : 'LAUDO_PADRAO'
+  const randomSuffix = $security.randomString(8)
+  const idempotencyKey =
+    body.idempotency_key || `TEST-FIXTURE-${clientOrgId}-${urgency}-${randomSuffix}`
+
+  // Verificar idempotência
+  const existing = $app.findRecordsByFilter(
+    'billing_items',
+    `idempotency_key = '${idempotencyKey}'`,
+    '',
+    1,
+    0,
+  )
+  if (existing.length > 0) {
+    return e.json(200, {
+      success: true,
+      alreadyBilled: true,
+      message: 'Item de teste já existente (idempotência preservada).',
+      billingItem: existing[0],
+    })
+  }
+
+  let createdItem = null
+  $app.runInTransaction((txApp) => {
+    const bCol = txApp.findCollectionByNameOrId('billing_items')
+    const item = new Record(bCol)
+    item.set('provider_org_id', contract.getString('provider_org_id'))
+    item.set('client_org_id', clientOrgId)
+    item.set('contract_id', contract.id)
+    if (priceTableId) item.set('price_table_id', priceTableId)
+    item.set('billing_type', isRectification ? 'REANÁLISE_CONTRATUAL' : billingType)
+    item.set('idempotency_key', idempotencyKey)
+    item.set('competence_period', competencePeriod)
+    item.set('modality', 'ECG_12_DERIVACOES')
+    item.set('urgency', urgency)
+    item.set('unit_price_snapshotted', price)
+    item.set('price_snapshot_date', new Date().toISOString())
+    item.set('status', 'billable')
+    item.set('is_rectification', isRectification)
+    item.set(
+      'notes',
+      `[FIXTURE_HOMOLOGACAO] Item de teste para homologação financeira segura (Etapa 7B). ${isRectification ? 'Retificação de laudo sem cobrança adicional.' : ''}`,
+    )
+    txApp.save(item)
+    createdItem = item
+  })
+
+  // Auditoria
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', authRecord.id)
+    auditRec.set('organization_id', clientOrgId)
+    auditRec.set('action', 'BILLING_ITEM_CREATED')
+    auditRec.set('target_collection', 'billing_items')
+    auditRec.set('target_id', createdItem.id)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `[FIXTURE_HOMOLOGACAO] Item financeiro de homologação gerado: ${idempotencyKey}, Valor: R$ ${price.toFixed(2)}`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message: 'Item de homologação gerado com sucesso.',
+    billingItem: createdItem,
+  })
+})
+
+// ------------------------------------------------------------------------------------------------
 // 5. ROTA DE EXPORTAÇÃO DE DEMONSTRATIVO EM CSV / METADADOS PARA PDF
 // ------------------------------------------------------------------------------------------------
 routerAdd('GET', '/backend/v1/finance/closings/{id}/export', (e) => {
@@ -668,10 +835,11 @@ routerAdd('GET', '/backend/v1/finance/closings/{id}/export', (e) => {
   } catch (_) {}
 
   if (format === 'csv') {
-    // Gerar CSV formatado
-    let csv = 'ID Item;Exame;Modalidade;Prioridade;Preco Unitario (R$);Data Faturamento;Status\r\n'
+    // Gerar CSV formatado (respeitando privacidade: NÃO expõe PII de pacientes nos itens faturáveis)
+    let csv =
+      'ID Item;ID Solicitacao;Modalidade;Prioridade;Preco Unitario (R$);Data Faturamento;Status\r\n'
     for (const it of items) {
-      csv += `${it.id};${it.getString('exam_request_id')};${it.getString('modality')};${it.getString('urgency')};${it.getFloat('unit_price_snapshotted').toFixed(2)};${it.getString('price_snapshot_date')};${it.getString('status')}\r\n`
+      csv += `${it.id};${it.getString('exam_request_id') || 'FIXTURE'};${it.getString('modality')};${it.getString('urgency')};${it.getFloat('unit_price_snapshotted').toFixed(2)};${it.getString('price_snapshot_date')};${it.getString('status')}\r\n`
     }
     csv += '\r\n--- AJUSTES E ESTORNOS ---\r\n'
     csv += 'Tipo;Valor (R$);Justificativa;Data\r\n'
@@ -688,6 +856,425 @@ routerAdd('GET', '/backend/v1/finance/closings/{id}/export', (e) => {
       format: 'csv',
       closingCode: closing.getString('closing_code'),
       csvContent: csv,
+    })
+  }
+
+  if (format === 'pdf') {
+    // GERADOR NATIVO DE DEMONSTRATIVO FINANCEIRO EM PDF NO BACKEND
+    // Atende estritamente: acentuação correta ISO-8859-1/WinAnsi, layout limpo de faturamento,
+    // ausência de PII de pacientes (apenas agregações, modalidades, totais e IDs anônimos),
+    // rastreabilidade com SHA-256 e registro em auditoria.
+    const escapePdfText = (str) => {
+      if (!str) return ''
+      let clean = String(str)
+        .replace(/\\/g, '\\\\')
+        .replace(/\(/g, '\\(')
+        .replace(/\)/g, '\\)')
+        .replace(/\r/g, '')
+      const accentsMap = {
+        á: '\\341',
+        à: '\\340',
+        ã: '\\343',
+        â: '\\342',
+        ä: '\\344',
+        Á: '\\301',
+        À: '\\300',
+        Ã: '\\303',
+        Â: '\\302',
+        Ä: '\\304',
+        é: '\\351',
+        è: '\\350',
+        ê: '\\352',
+        ë: '\\353',
+        É: '\\311',
+        È: '\\310',
+        Ê: '\\312',
+        Ë: '\\313',
+        í: '\\355',
+        ì: '\\354',
+        î: '\\356',
+        ï: '\\357',
+        Í: '\\315',
+        Ì: '\\314',
+        Î: '\\316',
+        Ï: '\\317',
+        ó: '\\363',
+        ò: '\\362',
+        õ: '\\365',
+        ô: '\\364',
+        ö: '\\366',
+        Ó: '\\323',
+        Ò: '\\322',
+        Õ: '\\325',
+        Ô: '\\324',
+        Ö: '\\326',
+        ú: '\\372',
+        ù: '\\371',
+        û: '\\373',
+        ü: '\\374',
+        Ú: '\\332',
+        Ù: '\\331',
+        Û: '\\333',
+        Ü: '\\334',
+        ç: '\\347',
+        Ç: '\\307',
+        ñ: '\\361',
+        Ñ: '\\321',
+        º: '\\272',
+        ª: '\\252',
+        '°': '\\260',
+        '–': '-',
+        '—': '-',
+        '“': '"',
+        '”': '"',
+        '’': "'",
+        '‘': "'",
+      }
+      for (const [k, v] of Object.entries(accentsMap)) {
+        clean = clean.split(k).join(v)
+      }
+      return clean
+    }
+
+    const clientName = clientOrg.getString('trade_name') || clientOrg.getString('name')
+    const clientCnpj = clientOrg.getString('cnpj') || '—'
+    const providerName = providerOrg.getString('trade_name') || providerOrg.getString('name')
+    const providerCnpj = providerOrg.getString('cnpj') || '—'
+    const closingCode = closing.getString('closing_code')
+    const competence = closing.getString('competence_period')
+    const status = closing.getString('status')
+    const subtotal = closing.getFloat('subtotal_amount')
+    const discounts = closing.getFloat('discounts_adjustments_amount')
+    const finalTotal = closing.getFloat('final_total_amount')
+    const totalItems = closing.getInt('total_items_count') || items.length
+
+    // Agregação por modalidade / urgência para demonstrativo limpo
+    let routineCount = 0
+    let routineTotal = 0.0
+    let urgentCount = 0
+    let urgentTotal = 0.0
+    let otherCount = 0
+    let otherTotal = 0.0
+
+    for (const it of items) {
+      const u = it.getString('urgency')
+      const p = it.getFloat('unit_price_snapshotted')
+      if (u === 'urgent') {
+        urgentCount++
+        urgentTotal += p
+      } else if (u === 'routine') {
+        routineCount++
+        routineTotal += p
+      } else {
+        otherCount++
+        otherTotal += p
+      }
+    }
+
+    let ops = []
+    // Barra superior decorativa
+    ops.push('0.05 0.30 0.57 rg')
+    ops.push('0.05 0.30 0.57 RG')
+    ops.push('2.0 w')
+    ops.push('40 805 m 555 805 l S')
+
+    // Cabeçalho da prestadora
+    ops.push('BT')
+    ops.push('/F2 12 Tf')
+    ops.push('40 788 Td')
+    ops.push(`(${escapePdfText(providerName)}) Tj`)
+    ops.push('ET')
+
+    ops.push('BT')
+    ops.push('/F1 8 Tf')
+    ops.push('40 775 Td')
+    ops.push(
+      `(${escapePdfText('CNPJ: ' + providerCnpj + ' • Central Especializada de Telelaudos em Cardiologia')}) Tj`,
+    )
+    ops.push('ET')
+
+    // Identificação do documento
+    ops.push('0.93 0.95 0.98 rg')
+    ops.push('40 715 515 48 re f')
+    ops.push('0.80 0.85 0.92 RG')
+    ops.push('0.8 w')
+    ops.push('40 715 515 48 re S')
+
+    ops.push('0.05 0.30 0.57 rg')
+    ops.push('BT')
+    ops.push('/F2 13 Tf')
+    ops.push('50 745 Td')
+    ops.push(`(${escapePdfText('DEMONSTRATIVO DE FATURAMENTO MENSAL')}) Tj`)
+    ops.push('ET')
+
+    ops.push('0.25 0.25 0.25 rg')
+    ops.push('BT')
+    ops.push('/F3 8.5 Tf')
+    ops.push('50 727 Td')
+    ops.push(
+      `(${escapePdfText('Código: ' + closingCode + '   •   Competência: ' + competence + '   •   Status: ' + status.toUpperCase())}) Tj`,
+    )
+    ops.push('ET')
+
+    let curY = 685
+    // Dados da Clínica Contratante
+    ops.push('0.15 0.15 0.15 rg')
+    ops.push('BT')
+    ops.push('/F2 9.5 Tf')
+    ops.push(`40 ${curY} Td`)
+    ops.push(`(${escapePdfText('1. DADOS DA CLÍNICA CONTRATANTE')}) Tj`)
+    ops.push('ET')
+
+    ops.push('0.7 0.7 0.7 RG')
+    ops.push('0.5 w')
+    ops.push(`40 ${curY - 4} m 555 ${curY - 4} l S`)
+    curY -= 18
+
+    ops.push('BT')
+    ops.push('/F2 8.5 Tf')
+    ops.push(`45 ${curY} Td`)
+    ops.push(`(${escapePdfText('Razão Social / Nome: ')}) Tj`)
+    ops.push('/F1 8.5 Tf')
+    ops.push(`(${escapePdfText(clientName)}) Tj`)
+    ops.push('ET')
+
+    ops.push('BT')
+    ops.push('/F2 8.5 Tf')
+    ops.push(`350 ${curY} Td`)
+    ops.push(`(${escapePdfText('CNPJ: ')}) Tj`)
+    ops.push('/F1 8.5 Tf')
+    ops.push(`(${escapePdfText(clientCnpj)}) Tj`)
+    ops.push('ET')
+    curY -= 25
+
+    // Resumo de Produção por Modalidade e Urgência
+    ops.push('0.15 0.15 0.15 rg')
+    ops.push('BT')
+    ops.push('/F2 9.5 Tf')
+    ops.push(`40 ${curY} Td`)
+    ops.push(
+      `(${escapePdfText('2. RESUMO DE PRODUÇÃO FATURÁVEL (COMPETÊNCIA ' + competence + ')')}) Tj`,
+    )
+    ops.push('ET')
+
+    ops.push('0.7 0.7 0.7 RG')
+    ops.push('0.5 w')
+    ops.push(`40 ${curY - 4} m 555 ${curY - 4} l S`)
+    curY -= 18
+
+    // Tabela - Cabeçalho
+    ops.push('0.95 0.95 0.95 rg')
+    ops.push(`40 ${curY - 14} 515 16 re f`)
+    ops.push('0.15 0.15 0.15 rg')
+    ops.push('BT')
+    ops.push('/F2 8 Tf')
+    ops.push(`50 ${curY - 10} Td`)
+    ops.push(`(${escapePdfText('MODALIDADE / SERVIÇO')}) Tj`)
+    ops.push(`180 0 Td`)
+    ops.push(`(${escapePdfText('PRIORIDADE')}) Tj`)
+    ops.push(`110 0 Td`)
+    ops.push(`(${escapePdfText('QUANTIDADE')}) Tj`)
+    ops.push(`100 0 Td`)
+    ops.push(`(${escapePdfText('TOTAL FATURADO (R$)')}) Tj`)
+    ops.push('ET')
+    curY -= 28
+
+    // Linhas de produção
+    ops.push('BT')
+    ops.push('/F1 8.5 Tf')
+    ops.push(`50 ${curY} Td`)
+    ops.push(`(${escapePdfText('Eletrocardiograma 12 Derivações')}) Tj`)
+    ops.push(`180 0 Td`)
+    ops.push(`(${escapePdfText('Rotina')}) Tj`)
+    ops.push(`110 0 Td`)
+    ops.push(`(${escapePdfText(String(routineCount) + ' laudos')}) Tj`)
+    ops.push(`100 0 Td`)
+    ops.push(`(${escapePdfText('R$ ' + routineTotal.toFixed(2))}) Tj`)
+    ops.push('ET')
+    curY -= 16
+
+    ops.push('BT')
+    ops.push('/F1 8.5 Tf')
+    ops.push(`50 ${curY} Td`)
+    ops.push(`(${escapePdfText('Eletrocardiograma 12 Derivações')}) Tj`)
+    ops.push(`180 0 Td`)
+    ops.push(`(${escapePdfText('Urgente / Emergência')}) Tj`)
+    ops.push(`110 0 Td`)
+    ops.push(`(${escapePdfText(String(urgentCount) + ' laudos')}) Tj`)
+    ops.push(`100 0 Td`)
+    ops.push(`(${escapePdfText('R$ ' + urgentTotal.toFixed(2))}) Tj`)
+    ops.push('ET')
+    curY -= 16
+
+    if (otherCount > 0) {
+      ops.push('BT')
+      ops.push('/F1 8.5 Tf')
+      ops.push(`50 ${curY} Td`)
+      ops.push(`(${escapePdfText('Outras Demandas Contratadas')}) Tj`)
+      ops.push(`180 0 Td`)
+      ops.push(`(${escapePdfText('Especial')}) Tj`)
+      ops.push(`110 0 Td`)
+      ops.push(`(${escapePdfText(String(otherCount) + ' laudos')}) Tj`)
+      ops.push(`100 0 Td`)
+      ops.push(`(${escapePdfText('R$ ' + otherTotal.toFixed(2))}) Tj`)
+      ops.push('ET')
+      curY -= 16
+    }
+
+    curY -= 10
+    // Ajustes e Estornos Contratuais
+    ops.push('0.15 0.15 0.15 rg')
+    ops.push('BT')
+    ops.push('/F2 9.5 Tf')
+    ops.push(`40 ${curY} Td`)
+    ops.push(`(${escapePdfText('3. AJUSTES, GLOSAS E ESTORNOS HOMOLOGADOS')}) Tj`)
+    ops.push('ET')
+
+    ops.push('0.7 0.7 0.7 RG')
+    ops.push('0.5 w')
+    ops.push(`40 ${curY - 4} m 555 ${curY - 4} l S`)
+    curY -= 18
+
+    if (adjustments.length === 0) {
+      ops.push('BT')
+      ops.push('/F1 8 Tf')
+      ops.push(`50 ${curY} Td`)
+      ops.push(
+        `(${escapePdfText('Nenhum ajuste, glosa ou desconto registrado para este fechamento.')}) Tj`,
+      )
+      ops.push('ET')
+      curY -= 16
+    } else {
+      for (const a of adjustments) {
+        ops.push('BT')
+        ops.push('/F2 8 Tf')
+        ops.push(`50 ${curY} Td`)
+        ops.push(`(${escapePdfText(a.getString('adjustment_type') + ':')}) Tj`)
+        ops.push('/F1 8 Tf')
+        ops.push(`130 0 Td`)
+        ops.push(
+          `(${escapePdfText('R$ ' + a.getFloat('amount').toFixed(2) + ' - ' + a.getString('justification'))}) Tj`,
+        )
+        ops.push('ET')
+        curY -= 14
+      }
+    }
+
+    curY -= 15
+    // Quadro de Totais Financeiros Consolidados
+    ops.push('0.94 0.96 0.98 rg')
+    ops.push(`40 ${curY - 60} 515 65 re f`)
+    ops.push('0.1 0.3 0.6 RG')
+    ops.push('1.2 w')
+    ops.push(`40 ${curY - 60} 515 65 re S`)
+
+    ops.push('0.1 0.1 0.1 rg')
+    ops.push('BT')
+    ops.push('/F2 9 Tf')
+    ops.push(`55 ${curY - 14} Td`)
+    ops.push(`(${escapePdfText('Total de Laudos Faturados:')}) Tj`)
+    ops.push('/F3 9.5 Tf')
+    ops.push(`160 0 Td`)
+    ops.push(`(${escapePdfText(String(totalItems) + ' exames')}) Tj`)
+    ops.push('ET')
+
+    ops.push('BT')
+    ops.push('/F2 9 Tf')
+    ops.push(`55 ${curY - 28} Td`)
+    ops.push(`(${escapePdfText('Subtotal da Produção:')}) Tj`)
+    ops.push('/F3 9.5 Tf')
+    ops.push(`160 0 Td`)
+    ops.push(`(${escapePdfText('R$ ' + subtotal.toFixed(2))}) Tj`)
+    ops.push('ET')
+
+    ops.push('BT')
+    ops.push('/F2 9 Tf')
+    ops.push(`55 ${curY - 42} Td`)
+    ops.push(`(${escapePdfText('Ajustes e Descontos:')}) Tj`)
+    ops.push('/F3 9.5 Tf')
+    ops.push(`160 0 Td`)
+    ops.push(`(${escapePdfText('R$ ' + discounts.toFixed(2))}) Tj`)
+    ops.push('ET')
+
+    ops.push('0.05 0.30 0.57 rg')
+    ops.push('BT')
+    ops.push('/F2 12 Tf')
+    ops.push(`330 ${curY - 30} Td`)
+    ops.push(`(${escapePdfText('VALOR TOTAL DEVIDO:')}) Tj`)
+    ops.push('ET')
+
+    ops.push('BT')
+    ops.push('/F2 13 Tf')
+    ops.push(`330 ${curY - 48} Td`)
+    ops.push(`(${escapePdfText('R$ ' + finalTotal.toFixed(2))}) Tj`)
+    ops.push('ET')
+
+    // Rodapé de Conformidade e Proteção de Dados
+    const footerY = 70
+    ops.push('0.8 0.8 0.8 RG')
+    ops.push('0.5 w')
+    ops.push(`40 ${footerY + 22} m 555 ${footerY + 22} l S`)
+
+    ops.push('0.3 0.3 0.3 rg')
+    ops.push('BT')
+    ops.push('/F1 7 Tf')
+    ops.push(`45 ${footerY + 12} Td`)
+    ops.push(
+      `(${escapePdfText('Documento financeiro oficial gerado pelo Sistema Central de Telelaudos em Cardiologia.')}) Tj`,
+    )
+    ops.push('ET')
+
+    ops.push('BT')
+    ops.push('/F1 6.5 Tf')
+    ops.push(`45 ${footerY + 2} Td`)
+    ops.push(
+      `(${escapePdfText('Em conformidade com a LGPD (Lei 13.709/2018): este demonstrativo contém dados corporativos e quantitativos agregados, sem exposição de prontuários ou PII clínicas de pacientes.')}) Tj`,
+    )
+    ops.push('ET')
+
+    ops.push('BT')
+    ops.push('/F3 6.5 Tf')
+    ops.push(`45 ${footerY - 8} Td`)
+    ops.push(
+      `(${escapePdfText('Autenticação Digital • Id Fechamento: ' + closing.id + ' • Gerado em: ' + new Date().toISOString())}) Tj`,
+    )
+    ops.push('ET')
+
+    const contentStream = ops.join('\n')
+    const header = '%PDF-1.7\n%\xE2\xE3\xCF\xD3\n'
+    const objects = [
+      '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+      '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+      '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 7 0 R /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >> >> >>\nendobj\n',
+      '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n',
+      '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n',
+      '6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>\nendobj\n',
+      `7 0 obj\n<< /Length ${contentStream.length} >>\nstream\n${contentStream}\nendstream\nendobj\n`,
+      `8 0 obj\n<< /Title (${escapePdfText('Demonstrativo Financeiro - ' + closingCode)}) /Author (${escapePdfText(providerName)}) /Creator (Central de Telelaudos Financeiro Engine) /Producer (PocketBase / Skip Cloud PDF Generator) /CreationDate (D:${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}Z) >>\nendobj\n`,
+    ]
+
+    let offset = header.length
+    const xrefEntries = ['0000000000 65535 f \r\n']
+    let bodyPdf = ''
+    for (let i = 0; i < objects.length; i++) {
+      const padOffset = ('0000000000' + offset).slice(-10)
+      xrefEntries.push(`${padOffset} 00000 n \r\n`)
+      bodyPdf += objects[i]
+      offset += objects[i].length
+    }
+    const xrefOffset = offset
+    const xref = `xref\n0 ${objects.length + 1}\n` + xrefEntries.join('')
+    const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 8 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+    const pdfString = header + bodyPdf + xref + trailer
+    const sha256 = $security.sha256(pdfString)
+
+    return e.json(200, {
+      success: true,
+      format: 'pdf',
+      closingCode: closingCode,
+      sha256: sha256,
+      fileSizeBytes: pdfString.length,
+      pdfRawString: pdfString,
     })
   }
 

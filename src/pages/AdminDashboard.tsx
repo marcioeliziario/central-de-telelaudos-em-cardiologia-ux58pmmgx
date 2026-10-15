@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   organizationService,
@@ -47,6 +48,7 @@ import {
   Activity,
   RotateCcw,
   DollarSign,
+  FileCheck,
 } from 'lucide-react'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
 import NotificationsPopover from '@/components/NotificationsPopover'
@@ -162,12 +164,22 @@ export default function AdminDashboard() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Link to="/admin/teste-assinatura">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-blue-400 bg-blue-50/80 text-[#0E4C92] hover:bg-blue-100 font-bold text-xs h-8"
+            >
+              <FileCheck className="w-3.5 h-3.5 text-[#0E4C92]" />
+              <span>Teste ICP-Brasil (6B)</span>
+            </Button>
+          </Link>
           <NotificationsPopover role="admin" />
           <Badge
             variant="outline"
             className="bg-emerald-50 text-emerald-900 border-emerald-300 py-1 text-xs"
           >
-            v0.0.12 — Etapa 7B: Homologação Financeira & Testes Integrados
+            v0.0.12 — Etapa 6B: Homologação ICP-Brasil
           </Badge>
         </div>
       </div>

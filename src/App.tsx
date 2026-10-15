@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider } from '@/contexts/AuthContext'
 import CentralDashboard from './pages/CentralDashboard'
 import HomologationPage from './pages/HomologationPage'
+import AdminBirdIdTestPage from './pages/AdminBirdIdTestPage'
 import Index from './pages/Index'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
@@ -27,6 +28,8 @@ const App = () => (
             <Route path="/auditoria" element={<Index />} />
             {/* Relatório da Etapa 4B de Homologação de PDF & Assinatura Digital ICP-Brasil */}
             <Route path="/homologacao" element={<HomologationPage />} />
+            {/* Painel Administrativo de Teste de Assinatura ICP-Brasil (Bird ID Pro / Soluti CESS - Etapa 6B) */}
+            <Route path="/admin/teste-assinatura" element={<AdminBirdIdTestPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

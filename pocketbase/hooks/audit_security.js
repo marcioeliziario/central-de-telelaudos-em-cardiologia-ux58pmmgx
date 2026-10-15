@@ -2253,17 +2253,19 @@ routerAdd('POST', '/backend/v1/signatures/callback', (e) => {
     throw new BadRequestError('Corpo da requisição inválido.')
   }
 
-  const transactionId = body.transaction_id
-  const callbackToken = body.callback_token
-  const signedHash = body.signed_hash
+  const transactionId = body.transaction_id || body.tcn
+  const callbackToken = body.callback_token || body.anti_replay_token || body.token
+  const signedHash = body.signed_hash || body.signed_hash_sha256
 
   if (!transactionId || !callbackToken) {
-    throw new BadRequestError('Identificador da transação e token de callback são obrigatórios.')
+    throw new BadRequestError(
+      'Identificador da transação (transaction_id ou tcn) e token de callback são obrigatórios.',
+    )
   }
 
   const sigs = $app.findRecordsByFilter(
     'report_signatures',
-    `transaction_id = '${transactionId}'`,
+    `transaction_id = '${transactionId}' || tcn = '${transactionId}'`,
     '',
     1,
     0,
@@ -2311,7 +2313,20 @@ routerAdd('POST', '/backend/v1/signatures/callback', (e) => {
     })
   }
 
-  const externalStatus = body.external_status || (body.status === 'ERROR' ? 'ERROR' : 'SIGNED')
+  // Suporte compatível com o formato de notificação oficial Soluti CESS
+  // Na Soluti, o webhook pode enviar tcn ou transaction_id, status (ex: 200, "SIGNED", "ERROR")
+  // e lista de documents com result URL
+  let parsedExternalStatus = body.external_status
+  if (!parsedExternalStatus) {
+    if (body.status === 'ERROR' || body.status === 400 || body.status === 500) {
+      parsedExternalStatus = 'ERROR'
+    } else if (body.status === 'SIGNED' || body.status === 200 || body.status === 201) {
+      parsedExternalStatus = 'SIGNED'
+    } else {
+      parsedExternalStatus = 'SIGNED'
+    }
+  }
+  const externalStatus = parsedExternalStatus
   const certificateAlias = body.certificate_alias || body.signer_alias || ''
   const isSimulated = body.is_simulated === true || sig.getBool('is_simulated')
   const nowIso = new Date().toISOString()
@@ -2495,6 +2510,612 @@ routerAdd('GET', '/backend/v1/signatures/birdid/status/{tcn}', (e) => {
         checksum: statusDoc.getString('file_hash_sha256'),
       },
     ],
+  })
+})
+
+// 12.2.1. Conector Bird ID Pro - Verificação de Configuração e Conectividade do Provedor (Etapa 6B)
+routerAdd('GET', '/backend/v1/signatures/birdid/config-status', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  // Validação backend: apenas administrador que também possua perfil médico habilitado
+  const userOrgs = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isAdmin = userOrgs.some((uo) => uo.getString('role') === 'admin')
+  const doctorRecords = $app.findRecordsByFilter(
+    'doctors',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    1,
+    0,
+  )
+  const isDoctor = doctorRecords.length > 0
+
+  if (!isAdmin || !isDoctor) {
+    throw new ForbiddenError(
+      'Acesso exclusivo para administradores com perfil médico homologado no corpo clínico.',
+    )
+  }
+
+  const doctor = doctorRecords[0]
+
+  // Inspeção dos segredos do ambiente SEM expor seus valores
+  const hasClientId = Boolean($os.getenv('BIRDID_CLIENT_ID'))
+  const hasClientSecret = Boolean($os.getenv('BIRDID_CLIENT_SECRET'))
+  const isEnabled = ($os.getenv('BIRDID_PRO_ENABLED') || '').toLowerCase() === 'true'
+  const customBaseUrl = $os.getenv('BIRDID_PRO_BASE_URL') || ''
+  const homologationBaseUrl = 'https://cess.lab.vaultid.com.br'
+  const productionBaseUrl = 'https://apicloudid.vaultid.com.br'
+
+  const effectiveBaseUrl = customBaseUrl || homologationBaseUrl
+  const isFullyConfigured = hasClientId && hasClientSecret && isEnabled
+
+  return e.json(200, {
+    success: true,
+    userContext: {
+      userId: authRecord.id,
+      name: authRecord.getString('name'),
+      email: authRecord.getString('email'),
+      isAdmin: true,
+      isDoctor: true,
+      crm: doctor.getString('crm'),
+      crmState: doctor.getString('crm_state'),
+      rqe: doctor.getString('rqe'),
+      specialty: doctor.getString('specialty'),
+    },
+    provider: {
+      id: 'birdid_pro_soluti',
+      name: 'Bird ID Pro / Soluti CESS',
+      type: 'PAdES ICP-Brasil (ISO 32000-1 / ETSI EN 319 142)',
+      officialDocs: 'https://docs.vaultid.com.br/workspace/cess',
+      homologationEndpoint: homologationBaseUrl,
+      productionEndpoint: productionBaseUrl,
+      activeBaseUrl: effectiveBaseUrl,
+    },
+    secretsStatus: {
+      BIRDID_CLIENT_ID: hasClientId ? 'CONFIGURADO' : 'AUSENTE',
+      BIRDID_CLIENT_SECRET: hasClientSecret ? 'CONFIGURADO' : 'AUSENTE',
+      BIRDID_PRO_ENABLED: isEnabled ? 'HABILITADO' : 'DESABILITADO_OU_AUSENTE',
+      BIRDID_PRO_BASE_URL: customBaseUrl ? 'CONFIGURADO' : 'PADRÃO_HOMOLOGAÇÃO_SOLUTI',
+      isFullyConfigured,
+      canExecuteRealSigning: isFullyConfigured,
+      blockReason: !isFullyConfigured
+        ? 'Assinatura real bloqueada: credenciais comerciais Soluti (BIRDID_CLIENT_ID, BIRDID_CLIENT_SECRET, BIRDID_PRO_ENABLED) não configuradas no ambiente.'
+        : null,
+    },
+    officialRequirements: {
+      architecture: 'Soluti CESS (Cloud Enterprise Signature Service) via API REST HTTPS',
+      signatureServicePath: '/signature-service',
+      uploadPath: '/file-transfer/{tcn}/true/{signature_setting_id}',
+      statusPath: '/signature-service/{tcn}',
+      downloadPath: '/file-transfer/{tcn}/{doc_id}',
+      authPath: '/oauth (grant_type=password com CPF e OTP, sem armazenar PIN/OTP no banco)',
+      callbackPath: '/backend/v1/signatures/callback',
+      prohibitions: [
+        'NUNCA armazenar senhas, PIN, OTP, tokens de acesso persistentes ou chaves privadas no banco de dados',
+        'Assinaturas simuladas não podem ser declaradas como válidas nem liberar laudos clínicos',
+        'Transações de teste não podem alterar laudos clínicos reais nem faturar financeiramente',
+      ],
+    },
+  })
+})
+
+// 12.2.2. Teste de Conectividade de Rede com Endpoint Soluti Homologação (Sem credenciais)
+routerAdd('POST', '/backend/v1/signatures/birdid/check-connectivity', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  // Validação: Admin + Médico
+  const userOrgs = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isAdmin = userOrgs.some((uo) => uo.getString('role') === 'admin')
+  const docCheck = $app.findRecordsByFilter(
+    'doctors',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    1,
+    0,
+  )
+  if (!isAdmin || docCheck.length === 0) {
+    throw new ForbiddenError('Acesso exclusivo para administradores com perfil médico habilitado.')
+  }
+
+  const endpointUrl = 'https://cess.lab.vaultid.com.br'
+  const startTime = Date.now()
+  let statusResult = 'ERRO'
+  let httpCode = 0
+  let latencyMs = 0
+  let details = ''
+
+  try {
+    const res = $http.send({
+      url: `${endpointUrl}/health-check`,
+      method: 'GET',
+      timeout: 5,
+    })
+    latencyMs = Date.now() - startTime
+    httpCode = res.statusCode
+    // Mesmo que responda 404, 401, 403 ou 200, comprova alcance IP/DNS e TLS
+    statusResult = 'ALCANÇÁVEL'
+    details = `Host respondeu HTTP ${res.statusCode} em ${latencyMs}ms. Conectividade de rede e handshake TLS estabelecidos com sucesso.`
+  } catch (err) {
+    latencyMs = Date.now() - startTime
+    statusResult = 'FALHA_CONECTIVIDADE'
+    details = `Não foi possível estabelecer conexão HTTPS com ${endpointUrl}: ${String(err)}`
+  }
+
+  // Auditoria
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', authRecord.id)
+    auditRec.set('action', 'BIRDID_CONNECTIVITY_TEST_EXECUTED')
+    auditRec.set('target_collection', 'report_signatures')
+    auditRec.set('status', statusResult === 'ALCANÇÁVEL' ? 'SUCCESS' : 'WARNING')
+    auditRec.set(
+      'details',
+      `Teste de alcance de rede executado para ${endpointUrl}. Resultado: ${statusResult} (HTTP ${httpCode}, ${latencyMs}ms). Classificação: Teste exclusivo de conectividade de rede, NÃO de autorização/credenciais.`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    testType: 'REDE_E_HOST (Conectividade pública sem autorização)',
+    classification:
+      'TESTE DE REDE HONESTO: Comprova alcance do host cess.lab.vaultid.com.br e resolução TLS, NÃO valida autorização/credenciais comerciais.',
+    endpointTested: endpointUrl,
+    reachability: statusResult,
+    httpStatusCode: httpCode,
+    latencyMs,
+    details,
+    testedAt: new Date().toISOString(),
+  })
+})
+
+// 12.2.3. Geração de PDF Fictício de Teste com Tarja Clara (Isolado de Pacientes Reais)
+routerAdd('POST', '/backend/v1/signatures/birdid/generate-test-pdf', (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  // Validação: Admin + Médico
+  const userOrgs = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isAdmin = userOrgs.some((uo) => uo.getString('role') === 'admin')
+  const docCheck = $app.findRecordsByFilter(
+    'doctors',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    1,
+    0,
+  )
+  if (!isAdmin || docCheck.length === 0) {
+    throw new ForbiddenError('Acesso exclusivo para administradores com perfil médico habilitado.')
+  }
+
+  const doctor = docCheck[0]
+  const testId = `TEST-${$security.randomString(8).toUpperCase()}`
+  const nowIso = new Date().toISOString()
+  const nowFormatted = new Date().toLocaleString('pt-BR')
+
+  // Identificação do MÉDICO REAL signatário (do cadastro do usuário autenticado)
+  const doctorRealName = authRecord.getString('name') || 'Médico Administrador'
+  const doctorCrm = doctor.getString('crm')
+  const doctorCrmState = doctor.getString('crm_state') || 'SP'
+  const doctorRqe = doctor.getString('rqe')
+  const doctorSpecialty = doctor.getString('specialty') || 'Cardiologia Clínica'
+
+  // Dados de paciente 100% FICTÍCIOS conforme item 4 do briefing
+  const fakePatientName = 'PACIENTE FICTÍCIO DE HOMOLOGAÇÃO TESTE 6B'
+  const fakePatientCpf = '000.000.000-00 (FICTÍCIO)'
+  const fakePatientBirth = '01/01/1980 (46 anos)'
+  const fakeEcgDescription =
+    'Ritmo sinusal regular fictício, FC 72 bpm, onda P de morfologia normal, intervalo PR 150 ms, complexo QRS estreito (80 ms), eixo elétrico em +45 graus. Repolarização ventricular sem anormalidades primárias. TRAÇADO PURAMENTE FICTÍCIO PARA HOMOLOGAÇÃO TÉCNICA.'
+  const fakeEcgConclusion =
+    'Eletrocardiograma fictício dentro dos padrões normais de teste técnico. Sem achados patológicos reais.'
+
+  // Helpers de escape de texto para motor PDF nativo
+  const escapePdfText = (str) => {
+    if (!str) return ''
+    let clean = String(str)
+      .replace(/\\/g, '\\\\')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)')
+      .replace(/\r/g, '')
+    const accentsMap = {
+      á: '\\341',
+      à: '\\340',
+      ã: '\\343',
+      â: '\\342',
+      ä: '\\344',
+      Á: '\\301',
+      À: '\\300',
+      Ã: '\\303',
+      Â: '\\302',
+      Ä: '\\304',
+      é: '\\351',
+      è: '\\350',
+      ê: '\\352',
+      ë: '\\353',
+      É: '\\311',
+      È: '\\310',
+      Ê: '\\312',
+      Ë: '\\313',
+      í: '\\355',
+      ì: '\\354',
+      î: '\\356',
+      ï: '\\357',
+      Í: '\\315',
+      Ì: '\\314',
+      Î: '\\316',
+      Ï: '\\317',
+      ó: '\\363',
+      ò: '\\362',
+      õ: '\\365',
+      ô: '\\364',
+      ö: '\\366',
+      Ó: '\\323',
+      Ò: '\\322',
+      Õ: '\\325',
+      Ô: '\\324',
+      Ö: '\\326',
+      ú: '\\372',
+      ù: '\\371',
+      û: '\\373',
+      ü: '\\374',
+      Ú: '\\332',
+      Ù: '\\331',
+      Û: '\\333',
+      Ü: '\\334',
+      ç: '\\347',
+      Ç: '\\307',
+      ñ: '\\361',
+      Ñ: '\\321',
+      º: '\\272',
+      ª: '\\252',
+      '°': '\\260',
+      '–': '-',
+      '—': '-',
+      '“': '"',
+      '”': '"',
+      '’': "'",
+      '‘': "'",
+    }
+    for (const [k, v] of Object.entries(accentsMap)) {
+      clean = clean.split(k).join(v)
+    }
+    return clean
+  }
+
+  const wrapText = (text, maxChars) => {
+    if (!text) return []
+    const paras = text.split('\n')
+    const lines = []
+    for (const p of paras) {
+      if (!p.trim()) {
+        lines.push('')
+        continue
+      }
+      const words = p.trim().split(/\s+/)
+      let cur = ''
+      for (const w of words) {
+        if ((cur + ' ' + w).trim().length <= maxChars) {
+          cur = (cur + ' ' + w).trim()
+        } else {
+          if (cur) lines.push(cur)
+          cur = w
+        }
+      }
+      if (cur) lines.push(cur)
+    }
+    return lines
+  }
+
+  let ops = []
+  // Faixa superior de isolamento
+  ops.push('0.85 0.20 0.20 rg')
+  ops.push('0.85 0.20 0.20 RG')
+  ops.push('2 w')
+  ops.push('40 805 m 555 805 l S')
+
+  // Cabeçalho da Central
+  ops.push('BT')
+  ops.push('/F2 12 Tf')
+  ops.push('40 788 Td')
+  ops.push(
+    `(${escapePdfText('CENTRAL DE TELELAUDOS EM CARDIOLOGIA — AMBIENTE DE HOMOLOGAÇÃO')}) Tj`,
+  )
+  ops.push('ET')
+
+  ops.push('BT')
+  ops.push('/F1 8 Tf')
+  ops.push('40 776 Td')
+  ops.push(
+    `(${escapePdfText('Módulo de Teste Técnico de Assinatura Digital ICP-Brasil (Soluti Bird ID Pro)')}) Tj`,
+  )
+  ops.push('ET')
+
+  // Tarja mandatória e destacada de teste fictício (item 4 do briefing)
+  ops.push('1.0 0.92 0.80 rg')
+  ops.push('40 720 515 45 re f')
+  ops.push('0.85 0.35 0.0 RG')
+  ops.push('1.5 w')
+  ops.push('40 720 515 45 re S')
+
+  ops.push('0.7 0.1 0.0 rg')
+  ops.push('BT')
+  ops.push('/F2 10 Tf')
+  ops.push('50 748 Td')
+  ops.push(
+    `(${escapePdfText('DOCUMENTO DE TESTE DE ASSINATURA DIGITAL. NÃO CORRESPONDE A UM PACIENTE REAL.')}) Tj`,
+  )
+  ops.push('ET')
+
+  ops.push('BT')
+  ops.push('/F2 8.5 Tf')
+  ops.push('50 732 Td')
+  ops.push(
+    `(${escapePdfText('Teste técnico — não é laudo assistencial. Proibida utilização clínica ou liberação assistencial.')}) Tj`,
+  )
+  ops.push('ET')
+
+  // Marca d'água de teste
+  ops.push('q')
+  ops.push('0.92 0.92 0.92 rg')
+  ops.push('BT')
+  ops.push('/F2 34 Tf')
+  ops.push('1 0 0 1 60 420 Tm')
+  ops.push(`(${escapePdfText('TESTE TÉCNICO — NÃO ASSISTENCIAL')}) Tj`)
+  ops.push('ET')
+  ops.push('Q')
+
+  // Identificador do teste e data
+  let curY = 690
+  ops.push('0.2 0.2 0.2 rg')
+  ops.push('BT')
+  ops.push('/F2 9 Tf')
+  ops.push(`40 ${curY} Td`)
+  ops.push(`(${escapePdfText('1. METADADOS DO TESTE TÉCNICO')}) Tj`)
+  ops.push('ET')
+  ops.push('0.7 0.7 0.7 RG')
+  ops.push('0.5 w')
+  ops.push(`40 ${curY - 4} m 555 ${curY - 4} l S`)
+  curY -= 18
+
+  ops.push('BT')
+  ops.push('/F2 8.5 Tf')
+  ops.push(`45 ${curY} Td`)
+  ops.push(`(${escapePdfText('ID do Teste: ')}) Tj`)
+  ops.push('/F3 8.5 Tf')
+  ops.push(`(${escapePdfText(testId)}) Tj`)
+  ops.push('ET')
+
+  ops.push('BT')
+  ops.push('/F2 8.5 Tf')
+  ops.push(`330 ${curY} Td`)
+  ops.push(`(${escapePdfText('Gerado em: ')}) Tj`)
+  ops.push('/F1 8.5 Tf')
+  ops.push(`(${escapePdfText(nowFormatted)}) Tj`)
+  ops.push('ET')
+  curY -= 20
+
+  // 2. Dados do Paciente Fictício
+  ops.push('BT')
+  ops.push('/F2 9 Tf')
+  ops.push(`40 ${curY} Td`)
+  ops.push(`(${escapePdfText('2. DADOS DO PACIENTE (100% FICTÍCIOS — SEM DADOS REAIS)')}) Tj`)
+  ops.push('ET')
+  ops.push(`40 ${curY - 4} m 555 ${curY - 4} l S`)
+  curY -= 18
+
+  ops.push('BT')
+  ops.push('/F2 8.5 Tf')
+  ops.push(`45 ${curY} Td`)
+  ops.push(`(${escapePdfText('Paciente: ')}) Tj`)
+  ops.push('/F1 8.5 Tf')
+  ops.push(`(${escapePdfText(fakePatientName)}) Tj`)
+  ops.push('ET')
+  curY -= 14
+
+  ops.push('BT')
+  ops.push('/F2 8.5 Tf')
+  ops.push(`45 ${curY} Td`)
+  ops.push(`(${escapePdfText('CPF: ')}) Tj`)
+  ops.push('/F1 8.5 Tf')
+  ops.push(`(${escapePdfText(fakePatientCpf)}) Tj`)
+  ops.push('ET')
+
+  ops.push('BT')
+  ops.push('/F2 8.5 Tf')
+  ops.push(`330 ${curY} Td`)
+  ops.push(`(${escapePdfText('Data Nasc: ')}) Tj`)
+  ops.push('/F1 8.5 Tf')
+  ops.push(`(${escapePdfText(fakePatientBirth)}) Tj`)
+  ops.push('ET')
+  curY -= 22
+
+  // 3. Eletrocardiograma Fictício
+  ops.push('BT')
+  ops.push('/F2 9 Tf')
+  ops.push(`40 ${curY} Td`)
+  ops.push(`(${escapePdfText('3. ACHADOS ELETROCARDIOGRÁFICOS (SIMULAÇÃO TÉCNICA)')}) Tj`)
+  ops.push('ET')
+  ops.push(`40 ${curY - 4} m 555 ${curY - 4} l S`)
+  curY -= 18
+
+  const descLines = wrapText(fakeEcgDescription, 85)
+  for (const line of descLines) {
+    ops.push('BT')
+    ops.push('/F1 8.5 Tf')
+    ops.push(`45 ${curY} Td`)
+    ops.push(`(${escapePdfText(line)}) Tj`)
+    ops.push('ET')
+    curY -= 13
+  }
+  curY -= 8
+
+  ops.push('BT')
+  ops.push('/F2 9 Tf')
+  ops.push(`40 ${curY} Td`)
+  ops.push(`(${escapePdfText('4. CONCLUSÃO DO LAUDO (FICTÍCIA)')}) Tj`)
+  ops.push('ET')
+  ops.push(`40 ${curY - 4} m 555 ${curY - 4} l S`)
+  curY -= 18
+
+  const conclLines = wrapText(fakeEcgConclusion, 85)
+  for (const line of conclLines) {
+    ops.push('BT')
+    ops.push('/F1 8.5 Tf')
+    ops.push(`45 ${curY} Td`)
+    ops.push(`(${escapePdfText(line)}) Tj`)
+    ops.push('ET')
+    curY -= 13
+  }
+  curY -= 20
+
+  // 5. IDENTIFICAÇÃO DO MÉDICO REAL SIGNATÁRIO (Item 4 do briefing)
+  ops.push('0.05 0.30 0.57 rg')
+  ops.push('BT')
+  ops.push('/F2 9 Tf')
+  ops.push(`40 ${curY} Td`)
+  ops.push(`(${escapePdfText('5. IDENTIFICAÇÃO DO MÉDICO CARDIOLOGISTA REAL SIGNATÁRIO')}) Tj`)
+  ops.push('ET')
+  ops.push('0.05 0.30 0.57 RG')
+  ops.push(`40 ${curY - 4} m 555 ${curY - 4} l S`)
+  curY -= 18
+
+  ops.push('BT')
+  ops.push('/F2 9 Tf')
+  ops.push(`45 ${curY} Td`)
+  ops.push(`(${escapePdfText(doctorRealName)}) Tj`)
+  ops.push('ET')
+  curY -= 14
+
+  ops.push('BT')
+  ops.push('/F1 8.5 Tf')
+  ops.push(`45 ${curY} Td`)
+  ops.push(
+    `(${escapePdfText('CRM: ' + doctorCrm + '/' + doctorCrmState + (doctorRqe ? ' • RQE: ' + doctorRqe : '') + ' • Especialidade: ' + doctorSpecialty)}) Tj`,
+  )
+  ops.push('ET')
+  curY -= 14
+
+  ops.push('BT')
+  ops.push('/F1 8 Tf')
+  ops.push(`45 ${curY} Td`)
+  ops.push(
+    `(${escapePdfText('Usuário Autenticado: ' + authRecord.getString('email') + ' (ID: ' + authRecord.id + ')')}) Tj`,
+  )
+  ops.push('ET')
+
+  // Rodapé técnico
+  ops.push('0.7 0.7 0.7 RG')
+  ops.push('0.5 w')
+  ops.push('40 70 m 555 70 l S')
+
+  ops.push('0.4 0.4 0.4 rg')
+  ops.push('BT')
+  ops.push('/F3 7.5 Tf')
+  ops.push('45 55 Td')
+  ops.push(
+    `(${escapePdfText('DOCUMENTO TÉCNICO IMUTÁVEL • PADRÃO PDF 1.7 • RESERVADO PARA HOMOLOGAÇÃO ICP-BRASIL')}) Tj`,
+  )
+  ops.push('ET')
+
+  ops.push('BT')
+  ops.push('/F3 7.5 Tf')
+  ops.push('45 42 Td')
+  ops.push(
+    `(${escapePdfText('CONFERÊNCIA INDEPENDENTE DISPONÍVEL NO ITI: https://validar.iti.gov.br/')}) Tj`,
+  )
+  ops.push('ET')
+
+  const contentStream = ops.join('\n')
+  const header = '%PDF-1.7\n%\xE2\xE3\xCF\xD3\n'
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 7 0 R /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >> >> >>\nendobj\n',
+    '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n',
+    '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n',
+    '6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>\nendobj\n',
+    `7 0 obj\n<< /Length ${contentStream.length} >>\nstream\n${contentStream}\nendstream\nendobj\n`,
+    `8 0 obj\n<< /Title (${escapePdfText('Laudo Fictício de Teste Assinatura - ' + testId)}) /Author (${escapePdfText(doctorRealName)}) /Creator (Central de Telelaudos SBC 2022 / Soluti Homologation Engine) /Producer (PocketBase / Skip Cloud PDF Generator) /CreationDate (D:${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}Z) >>\nendobj\n`,
+  ]
+
+  let offset = header.length
+  const xrefEntries = ['0000000000 65535 f \r\n']
+  let bodyPdf = ''
+  for (let i = 0; i < objects.length; i++) {
+    const padOffset = ('0000000000' + offset).slice(-10)
+    xrefEntries.push(`${padOffset} 00000 n \r\n`)
+    bodyPdf += objects[i]
+    offset += objects[i].length
+  }
+  const xrefOffset = offset
+  const xref = `xref\n0 ${objects.length + 1}\n` + xrefEntries.join('')
+  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 8 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+  const pdfString = header + bodyPdf + xref + trailer
+  const originalSha256 = $security.sha256(pdfString)
+
+  // Auditoria da geração do PDF de teste
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', authRecord.id)
+    auditRec.set('action', 'TEST_PDF_GENERATED_HOMOLOGATION')
+    auditRec.set('target_collection', 'report_documents')
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `PDF fictício de teste gerado para homologação ICP-Brasil. ID: ${testId}, Hash SHA-256 original: ${originalSha256}. Médico: ${doctorRealName} (CRM ${doctorCrm}/${doctorCrmState}). Isolado de pacientes clínicos.`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    testId,
+    generatedAt: nowIso,
+    originalSha256,
+    fileSizeBytes: pdfString.length,
+    doctor: {
+      name: doctorRealName,
+      crm: doctorCrm,
+      crmState: doctorCrmState,
+      rqe: doctorRqe,
+      specialty: doctorSpecialty,
+    },
+    patient: {
+      name: fakePatientName,
+      cpf: fakePatientCpf,
+      birth: fakePatientBirth,
+      isFictional: true,
+    },
+    disclaimer:
+      'DOCUMENTO DE TESTE DE ASSINATURA DIGITAL. NÃO CORRESPONDE A UM PACIENTE REAL. Teste técnico — não é laudo assistencial.',
+    pdfRawString: pdfString,
   })
 })
 

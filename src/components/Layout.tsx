@@ -74,7 +74,19 @@ export default function Layout() {
               }`}
             >
               <FileCheck className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Homologação 4B (PDF & ICP-Brasil)</span>
+              <span>Homologação 4B</span>
+            </Link>
+
+            <Link
+              to="/admin/teste-assinatura"
+              className={`hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold border transition-colors ${
+                location.pathname === '/admin/teste-assinatura'
+                  ? 'bg-blue-50 border-blue-400 text-[#0E4C92] shadow-sm'
+                  : 'bg-slate-100/80 border-slate-200 text-slate-700 hover:bg-slate-200/80'
+              }`}
+            >
+              <ShieldAlert className="w-3.5 h-3.5 text-[#0E4C92]" />
+              <span>Teste ICP-Brasil (6B)</span>
             </Link>
             {isAuthenticated && user ? (
               <div className="flex items-center gap-3">
@@ -147,13 +159,22 @@ export default function Layout() {
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-4 text-xs text-slate-300 shrink-0">
-            <Link
-              to="/homologacao"
-              className="flex items-center gap-1.5 bg-blue-950/60 hover:bg-blue-900 px-3 py-1.5 rounded-md border border-blue-800 transition-colors text-white"
-            >
-              <FileText className="w-3.5 h-3.5 text-[#00A6A6]" />
-              <span>Painel de Homologação</span>
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                to="/admin/teste-assinatura"
+                className="flex items-center gap-1.5 bg-blue-950/80 hover:bg-blue-900 px-3 py-1.5 rounded-md border border-blue-700 transition-colors text-white text-xs font-bold"
+              >
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-400" />
+                <span>Teste ICP-Brasil (6B)</span>
+              </Link>
+              <Link
+                to="/homologacao"
+                className="flex items-center gap-1.5 bg-blue-950/60 hover:bg-blue-900 px-3 py-1.5 rounded-md border border-blue-800 transition-colors text-white text-xs"
+              >
+                <FileText className="w-3.5 h-3.5 text-[#00A6A6]" />
+                <span>Painel 4B</span>
+              </Link>
+            </div>{' '}
             <div className="flex items-center gap-1.5 text-emerald-300 font-medium">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
               <span>Etapa 5 Homologada</span>

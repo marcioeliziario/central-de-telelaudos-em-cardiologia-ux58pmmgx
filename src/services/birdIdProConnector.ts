@@ -39,6 +39,110 @@ export const birdIdProConnector = {
   },
 
   /**
+   * ETAPA 6B: Consulta detalhada de status de configuração e secrets do Bird ID Pro
+   * Acessível apenas a administradores com perfil médico cadastrado.
+   */
+  async getConfigStatus(): Promise<{
+    success: boolean
+    userContext: {
+      userId: string
+      name: string
+      email: string
+      isAdmin: boolean
+      isDoctor: boolean
+      crm: string
+      crmState: string
+      rqe?: string
+      specialty?: string
+    }
+    provider: {
+      id: string
+      name: string
+      type: string
+      officialDocs: string
+      homologationEndpoint: string
+      productionEndpoint: string
+      activeBaseUrl: string
+    }
+    secretsStatus: {
+      BIRDID_CLIENT_ID: 'CONFIGURADO' | 'AUSENTE'
+      BIRDID_CLIENT_SECRET: 'CONFIGURADO' | 'AUSENTE'
+      BIRDID_PRO_ENABLED: 'HABILITADO' | 'DESABILITADO_OU_AUSENTE'
+      BIRDID_PRO_BASE_URL: string
+      isFullyConfigured: boolean
+      canExecuteRealSigning: boolean
+      blockReason: string | null
+    }
+    officialRequirements: {
+      architecture: string
+      signatureServicePath: string
+      uploadPath: string
+      statusPath: string
+      downloadPath: string
+      authPath: string
+      callbackPath: string
+      prohibitions: string[]
+    }
+  }> {
+    const res = await pb.send('/backend/v1/signatures/birdid/config-status', {
+      method: 'GET',
+    })
+    return res
+  },
+
+  /**
+   * ETAPA 6B: Teste de conectividade pública de rede com o host oficial de homologação
+   * Sem exigir credenciais (reachability/TLS honesto de rede).
+   */
+  async checkHomologationConnectivity(): Promise<{
+    success: boolean
+    testType: string
+    classification: string
+    endpointTested: string
+    reachability: string
+    httpStatusCode: number
+    latencyMs: number
+    details: string
+    testedAt: string
+  }> {
+    const res = await pb.send('/backend/v1/signatures/birdid/check-connectivity', {
+      method: 'POST',
+    })
+    return res
+  },
+
+  /**
+   * ETAPA 6B: Geração de PDF fictício de teste com tarja clara mandatória e isolamento
+   */
+  async generateTestPdf(): Promise<{
+    success: boolean
+    testId: string
+    generatedAt: string
+    originalSha256: string
+    fileSizeBytes: number
+    doctor: {
+      name: string
+      crm: string
+      crmState: string
+      rqe?: string
+      specialty: string
+    }
+    patient: {
+      name: string
+      cpf: string
+      birth: string
+      isFictional: boolean
+    }
+    disclaimer: string
+    pdfRawString: string
+  }> {
+    const res = await pb.send('/backend/v1/signatures/birdid/generate-test-pdf', {
+      method: 'POST',
+    })
+    return res
+  },
+
+  /**
    * Inicia uma transação de assinatura Bird ID Pro para o documento especificado
    */
   async initTransaction(documentId: string): Promise<BirdIdInitTransactionResponse> {

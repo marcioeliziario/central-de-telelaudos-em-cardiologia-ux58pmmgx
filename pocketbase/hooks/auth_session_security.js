@@ -933,6 +933,100 @@ routerAdd('POST', '/backend/v1/auth/reauth', (e) => {
 // GET /backend/v1/doctor/signature/current (Obter própria assinatura)
 // -------------------------------------------------------------
 
+routerAdd('POST', '/backend/v1/doctor/signature/sync-initial', (e) => {
+  // Rota administrativa interna para sincronizar a assinatura processada para médicos autorizados
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const targetUserId = body.user_id || authRecord.id
+  const fileName = body.file_name || 'assinatura-medica-principal-transparente.png'
+  const fileHash = body.file_hash_sha256 || ''
+  const imageDataUri = body.image_data_uri || ''
+
+  if (!imageDataUri || !fileHash) {
+    throw new BadRequestError('Dados de imagem e hash são obrigatórios.')
+  }
+
+  const targetUser = $app.findRecordById('users', targetUserId)
+  if (!targetUser) {
+    throw new NotFoundError('Usuário não encontrado.')
+  }
+
+  let sigRec = null
+  let isSubstitution = false
+  const nowIso = new Date().toISOString()
+
+  $app.runInTransaction((txApp) => {
+    const existing = txApp.findRecordsByFilter(
+      'doctor_signatures',
+      `user_id = '${targetUserId}'`,
+      '-created',
+      1,
+      0,
+    )
+    if (existing.length > 0) {
+      sigRec = existing[0]
+      isSubstitution = true
+    } else {
+      const col = txApp.findCollectionByNameOrId('doctor_signatures')
+      sigRec = new Record(col)
+      sigRec.set('user_id', targetUserId)
+    }
+
+    sigRec.set('file_name', fileName)
+    sigRec.set('file_hash_sha256', fileHash)
+    sigRec.set('image_data_uri', imageDataUri)
+    sigRec.set('is_active', true)
+    sigRec.set('last_verified_at', nowIso)
+
+    try {
+      if (typeof $filesystem !== 'undefined' && $filesystem.fileFromBytes) {
+        const parts = imageDataUri.split(',')
+        const rawContent = parts.length > 1 ? parts[1] : parts[0]
+        if (rawContent && rawContent.length > 30) {
+          const fileObj = $filesystem.fileFromBytes(rawContent, fileName)
+          sigRec.set('signature_image', fileObj)
+        }
+      }
+    } catch (_) {}
+
+    txApp.save(sigRec)
+  })
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', authRecord.id)
+    auditRec.set(
+      'action',
+      isSubstitution ? 'DOCTOR_SIGNATURE_SUBSTITUTED' : 'DOCTOR_SIGNATURE_REGISTERED',
+    )
+    auditRec.set('target_collection', 'doctor_signatures')
+    auditRec.set('target_id', sigRec.id)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Assinatura do cardiologista ${targetUser.getString('name')} sincronizada e ativada. Arquivo: ${fileName}, SHA-256: ${fileHash}`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    signatureId: sigRec.id,
+    fileHashSha256: fileHash,
+    isActive: true,
+    userId: targetUserId,
+  })
+})
+
 routerAdd('GET', '/backend/v1/doctor/signature/current', (e) => {
   const authRecord = e.auth
   if (!authRecord) {

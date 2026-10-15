@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-15T22:14:26.678Z",
+  "generatedAt": "2026-10-15T22:31:16.994Z",
   "collections": [
     {
       "name": "users",
@@ -2615,7 +2615,7 @@
         {
           "name": "signature_image",
           "type": "file",
-          "required": true,
+          "required": false,
           "system": false
         },
         {

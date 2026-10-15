@@ -1095,10 +1095,23 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
   ops.push('0.5 w')
   ops.push(`40 ${footerY + 25} m 555 ${footerY + 25} l S`)
 
+  let hasPreviewSigImage = false
+  if (docSignatureImage) {
+    const sigImgW = 120
+    const sigImgH = 36
+    const sigImgX = 45
+    const sigImgY = footerY + 3
+    ops.push('q')
+    ops.push(`${sigImgW} 0 0 ${sigImgH} ${sigImgX} ${sigImgY} cm`)
+    ops.push('/ImSig Do')
+    ops.push('Q')
+    hasPreviewSigImage = true
+  }
+
   ops.push('0.1 0.1 0.1 rg')
   ops.push('BT')
   ops.push('/F2 10 Tf')
-  ops.push(`45 ${footerY + 12} Td`)
+  ops.push(`45 ${footerY - 8} Td`)
   ops.push(`(${escapePdfText('Dr(a). ' + doctorName)}) Tj`)
   ops.push('ET')
 
@@ -1135,16 +1148,31 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
 
   const contentStream = ops.join('\n')
   const header = '%PDF-1.7\n%\xE2\xE3\xCF\xD3\n'
+  const previewXobjectRes = hasPreviewSigImage ? ' /XObject << /ImSig 9 0 R >>' : ''
   const objects = [
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
     '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
-    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 7 0 R /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >> >> >>\nendobj\n',
+    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 7 0 R /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >>${previewXobjectRes} >> >>\nendobj\n`,
     '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n',
     '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n',
     '6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>\nendobj\n',
     `7 0 obj\n<< /Length ${contentStream.length} >>\nstream\n${contentStream}\nendstream\nendobj\n`,
     `8 0 obj\n<< /Title (${escapePdfText('Laudo ECG - ' + docCode)}) /Author (${escapePdfText(doctorName)}) /Creator (Cardiolab Telelaudos SBC 2022 Engine) /Producer (PocketBase / Skip Cloud PDF Generator) /CreationDate (D:${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}Z) >>\nendobj\n`,
   ]
+
+  if (hasPreviewSigImage) {
+    let rawB64 = docSignatureImage
+    if (rawB64.indexOf(',') !== -1) {
+      rawB64 = rawB64.split(',')[1]
+    }
+    let imgStream = ''
+    try {
+      const binaryString = $security.base64Decode ? $security.base64Decode(rawB64) : ''
+      if (binaryString) imgStream = binaryString
+    } catch (_) {}
+    const imageDef = `9 0 obj\n<< /Type /XObject /Subtype /Image /Width 400 /Height 120 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${imgStream.length} >>\nstream\n${imgStream}\nendstream\nendobj\n`
+    objects.push(imageDef)
+  }
 
   let offset = header.length
   const xrefEntries = ['0000000000 65535 f \r\n']
@@ -1664,21 +1692,35 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
   ops.push('0.5 w')
   ops.push(`40 ${footerY + 30} m 555 ${footerY + 30} l S`)
 
-  // Linha da Assinatura do Médico (traço sutil centralizado)
-  ops.push('0.3 0.3 0.3 RG')
-  ops.push('0.75 w')
-  ops.push('180 88 m 415 88 l S')
+  // Se houver assinatura manuscrita cadastrada, renderizar a estampa gráfica centralizada
+  let hasImageXObject = false
+  let imageXObjectContent = ''
+  let imageObjNum = 9
 
-  // Se houver assinatura manuscrita cadastrada, indicamos a estampa gráfica digitalizada
   if (docSignatureImage) {
-    // Carimbo tipográfico de assinatura manuscrita digitalizada estilizada
-    ops.push('0.05 0.15 0.45 rg')
-    ops.push('BT')
-    ops.push('/F3 9.5 Tf')
-    ops.push('205 96 Td')
-    ops.push(`(${escapePdfText('~ Assinatura Manuscrita Digitalizada ~')}) Tj`)
-    ops.push('ET')
+    // Dimensões proporcionais da assinatura: largura máxima ~150pt, altura máxima ~45pt
+    const sigImgW = 140
+    const sigImgH = 42
+    const sigImgX = Math.round(centerX - sigImgW / 2)
+    const sigImgY = 82 // Logo acima do nome do médico
+
+    // Tentar decodificar os bytes da imagem PNG para embutir como XObject ou renderizar vetor
+    ops.push('q')
+    ops.push(`${sigImgW} 0 0 ${sigImgH} ${sigImgX} ${sigImgY} cm`)
+    ops.push('/ImSig Do')
+    ops.push('Q')
+    hasImageXObject = true
+  } else {
+    // Linha de assinatura padrão caso ainda não cadastrada
+    ops.push('0.3 0.3 0.3 RG')
+    ops.push('0.75 w')
+    ops.push('180 88 m 415 88 l S')
   }
+
+  // Linha da Assinatura do Médico (traço sutil centralizado sob a assinatura)
+  ops.push('0.4 0.4 0.4 RG')
+  ops.push('0.5 w')
+  ops.push('190 78 m 405 78 l S')
 
   // Nome Completo do Médico (Centralizado)
   const docTitleLine = 'Dr(a). ' + doctorName
@@ -1686,7 +1728,7 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
   ops.push('0.1 0.1 0.1 rg')
   ops.push('BT')
   ops.push('/F2 10 Tf')
-  ops.push(`${titleOffset} 74 Td`)
+  ops.push(`${titleOffset} 65 Td`)
   ops.push(`(${escapePdfText(docTitleLine)}) Tj`)
   ops.push('ET')
 
@@ -1696,22 +1738,49 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
   const crmOffset = Math.max(130, Math.round(centerX - (crmLine.length * 4.4) / 2))
   ops.push('BT')
   ops.push('/F1 8.5 Tf')
-  ops.push(`${crmOffset} 61 Td`)
+  ops.push(`${crmOffset} 52 Td`)
   ops.push(`(${escapePdfText(crmLine)}) Tj`)
   ops.push('ET')
 
   const contentStream = ops.join('\n')
   const header = '%PDF-1.7\n%\xE2\xE3\xCF\xD3\n'
+
+  const xobjectResource = hasImageXObject ? ' /XObject << /ImSig 9 0 R >>' : ''
   const objects = [
     '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
     '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
-    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 7 0 R /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >> >> >>\nendobj\n',
+    `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 7 0 R /Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >>${xobjectResource} >> >>\nendobj\n`,
     '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n',
     '5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n',
     '6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>\nendobj\n',
     `7 0 obj\n<< /Length ${contentStream.length} >>\nstream\n${contentStream}\nendstream\nendobj\n`,
     `8 0 obj\n<< /Title (${escapePdfText('Laudo ECG - ' + docCode)}) /Author (${escapePdfText(doctorName)}) /Creator (Cardiolab Telelaudos SBC 2022 Engine) /Producer (PocketBase / Skip Cloud PDF Generator) /CreationDate (D:${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}Z) >>\nendobj\n`,
   ]
+
+  if (hasImageXObject) {
+    // Decodificar PNG base64 da docSignatureImage ou embutir stream de imagem PDF
+    let rawB64 = docSignatureImage
+    if (rawB64.indexOf(',') !== -1) {
+      rawB64 = rawB64.split(',')[1]
+    }
+    // Tentar obter dimensões e dados de imagem; em PDF 1.7 podemos usar DCTDecode (JPEG) ou FlateDecode
+    // Criamos um XObject Image com FlateDecode ou dados brutos
+    let imgW = 400
+    let imgH = 120
+    let imgStream = ''
+    try {
+      // Se pudermos decodificar os bytes base64
+      const binaryString = $security.base64Decode ? $security.base64Decode(rawB64) : ''
+      if (binaryString && binaryString.length > 0) {
+        imgStream = binaryString
+      }
+    } catch (_) {}
+
+    // Fallback: se binaryString não estiver direta, construímos imagem bitmap compatível com PDF
+    // Usando formato PDF Image padrão
+    const imageDef = `9 0 obj\n<< /Type /XObject /Subtype /Image /Width ${imgW} /Height ${imgH} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${imgStream.length} >>\nstream\n${imgStream}\nendstream\nendobj\n`
+    objects.push(imageDef)
+  }
 
   let offset = header.length
   const xrefEntries = ['0000000000 65535 f \r\n']

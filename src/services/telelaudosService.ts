@@ -272,3 +272,88 @@ export const criticalFindingService = {
     })
   },
 }
+
+// -------------------------------------------------------------
+// ETAPA 4A: DOCUMENTOS MÉDICOS (PDF) E PREPARAÇÃO PARA ASSINATURA
+// -------------------------------------------------------------
+
+export const documentService = {
+  // Gera prévia do PDF (com tarja "DOCUMENTO NÃO ASSINADO") — somente cardiologista/admin
+  async getPreview(examId: string): Promise<{
+    success: boolean
+    isPreview: boolean
+    documentCode: string
+    version: number
+    sha256: string
+    fileSizeBytes: number
+    disclaimer: string
+    pdfRawString: string
+  }> {
+    return await pb.send(`/backend/v1/exams/${examId}/report-pdf-preview`, {
+      method: 'GET',
+    })
+  },
+
+  // Gera PDF definitivo, grava SHA-256, bloqueia a versão e cria registro de assinatura (NAO_INICIADA)
+  async prepareForSignature(examId: string): Promise<{
+    success: boolean
+    message: string
+    document: any
+    signature: any
+    sha256: string
+    version: number
+    documentCode: string
+  }> {
+    return await pb.send(`/backend/v1/exams/${examId}/prepare-signature`, {
+      method: 'POST',
+    })
+  },
+
+  // Solicita metadados de download (auditoria de acesso registrada no backend)
+  async requestDownload(docId: string): Promise<{
+    success: boolean
+    documentId: string
+    documentCode: string
+    version: number
+    fileHashSha256: string
+    fileSizeBytes: number
+    generatedAt: string
+    fileName: string
+  }> {
+    return await pb.send(`/backend/v1/documents/${docId}/download`, {
+      method: 'GET',
+    })
+  },
+
+  // Lista documentos (versões) gerados para um exame
+  async getDocumentsForExam(examId: string): Promise<any[]> {
+    return await pb.collection('report_documents').getFullList({
+      filter: `exam_request_id = '${examId}'`,
+      sort: '-version',
+      expand: 'doctor_id,exam_request_id',
+    })
+  },
+
+  // Consulta status da assinatura de um documento
+  async getSignatureForDocument(documentId: string): Promise<any | null> {
+    try {
+      const list = await pb.collection('report_signatures').getList(1, 1, {
+        filter: `report_document_id = '${documentId}'`,
+        sort: '-created',
+        expand: 'report_document_id,doctor_id',
+      })
+      return list.items.length > 0 ? list.items[0] : null
+    } catch {
+      return null
+    }
+  },
+
+  // Consulta todas as assinaturas de um exame
+  async getSignaturesForExam(examId: string): Promise<any[]> {
+    return await pb.collection('report_signatures').getFullList({
+      filter: `exam_request_id = '${examId}'`,
+      sort: '-created',
+      expand: 'report_document_id,doctor_id',
+    })
+  },
+}

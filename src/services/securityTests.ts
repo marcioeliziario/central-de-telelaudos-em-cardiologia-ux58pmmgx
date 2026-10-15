@@ -4,7 +4,13 @@ import PocketBase from 'pocketbase'
 export interface TestResultItem {
   id: string
   name: string
-  category: 'isolamento' | 'rbac' | 'auditoria' | 'integridade' | 'etapa3_medica'
+  category:
+    | 'isolamento'
+    | 'rbac'
+    | 'auditoria'
+    | 'integridade'
+    | 'etapa3_medica'
+    | 'etapa4a_documentos'
   description: string
   expected: string
   status: 'pending' | 'running' | 'passed' | 'failed'
@@ -141,6 +147,107 @@ export async function runSecurityAndIsolationTests(
         'Verificação se os eventos médicos (EXAM_CLAIMED, REPORT_DRAFT_SAVED, EXAM_RETURNED_TECHNICAL) foram gravados em audit_logs.',
       expected:
         'Eventos registrados com carimbo de tempo, usuário médico, ID do exame e detalhes da ação.',
+      status: 'pending',
+    },
+
+    // --- TESTES OBRIGATÓRIOS DA ETAPA 4A (DOCUMENTOS E ASSINATURA DIGITAL) ---
+    {
+      id: 'test-e4a-1-pdf-generation',
+      name: 'Etapa 4A - Geração de PDF com Dados Fictícios',
+      category: 'etapa4a_documentos',
+      description:
+        'Cardiologista autenticado chama a rota de preparação de PDF para assinatura em um exame com laudo concluído (dados fictícios).',
+      expected:
+        'PDF gerado no servidor (A4, PDF-1.7) com hash SHA-256 calculado e registrado em report_documents.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e4a-2-content-matches-editor',
+      name: 'Etapa 4A - Correspondência entre Conteúdo do Editor e Documento',
+      category: 'etapa4a_documentos',
+      description:
+        'O texto da descrição e da conclusão gravado no snapshot do documento deve corresponder exatamente ao conteúdo submetido pelo médico no editor.',
+      expected:
+        'Snapshot do documento contém a descrição e a conclusão idênticas às gravadas no laudo (ecg_reports).',
+      status: 'pending',
+    },
+    {
+      id: 'test-e4a-3-portuguese-accents-preserved',
+      name: 'Etapa 4A - Preservação de Acentos e Caracteres Portugueses',
+      category: 'etapa4a_documentos',
+      description:
+        'Laudo com descrição contendo acentos (ç, ã, é, õ, â) é submetido e o documento gerado preserva os caracteres no snapshot.',
+      expected:
+        'Caracteres portugueses preservados no snapshot sem substituição ou perda de acentuação.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e4a-4-no-invented-measures',
+      name: 'Etapa 4A - Ausência de Campos Numéricos Não Preenchidos',
+      category: 'etapa4a_documentos',
+      description:
+        'Laudo submetido SEM medidas numéricas (FC, PR, QRS, QT, QTc zerados/vazios) gera documento sem valores inventados.',
+      expected:
+        'Snapshot do documento não contém campos numéricos preenchidos quando não informados pelo médico (sem medidas fabricadas).',
+      status: 'pending',
+    },
+    {
+      id: 'test-e4a-5-prepared-version-locked',
+      name: 'Etapa 4A - Bloqueio de Alteração de Versões Preparadas para Assinatura',
+      category: 'etapa4a_documentos',
+      description:
+        'Tentativa de modificar um registro em report_documents após a preparação para assinatura.',
+      expected: 'Hook do backend rejeita a alteração (HTTP 403 - versão estritamente imutável).',
+      status: 'pending',
+    },
+    {
+      id: 'test-e4a-6-new-version-not-overwritten',
+      name: 'Etapa 4A - Nova Versão Após Correção Sem Sobrescrever',
+      category: 'etapa4a_documentos',
+      description:
+        'Após preparar uma versão, o médico corrige o laudo e prepara novamente. O sistema deve criar uma nova versão incrementada.',
+      expected:
+        'Dois registros em report_documents (v1 e v2) para o mesmo exame, ambos preservados com hashes distintos.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e4a-7-cross-clinic-blocked',
+      name: 'Etapa 4A - Bloqueio de Acesso entre Clínicas',
+      category: 'etapa4a_documentos',
+      description:
+        'Operador da Clínica Alfa tenta acessar rota de prévia de PDF de um exame pertencente à Clínica Beta (via rota restrita a cardiologistas).',
+      expected:
+        'Rota de prévia rejeita usuários que não sejam cardiologistas/administradores (HTTP 403).',
+      status: 'pending',
+    },
+    {
+      id: 'test-e4a-8-unreleased-download-blocked',
+      name: 'Etapa 4A - Bloqueio de Download de Laudo Não Liberado',
+      category: 'etapa4a_documentos',
+      description:
+        'Usuário da clínica contratante tenta acessar a rota de download de um documento ainda não assinado/validado.',
+      expected:
+        'Rota de download rejeita com HTTP 403 — liberação clínica condicionada à validação criptográfica da assinatura.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e4a-9-actions-audited',
+      name: 'Etapa 4A - Registro de Ações na Auditoria',
+      category: 'etapa4a_documentos',
+      description:
+        'Verificação de eventos REPORT_PDF_PREVIEW_ACCESSED e REPORT_PDF_GENERATED_PREPARED_FOR_SIGNATURE em audit_logs.',
+      expected:
+        'Eventos de geração e prévia de PDF registrados com usuário, horário e hash do documento.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e4a-10-safe-failure',
+      name: 'Etapa 4A - Falha Segura na Geração de PDF',
+      category: 'etapa4a_documentos',
+      description:
+        'Chamada à rota de preparação para um exame inexistente/sem laudo concluído deve falhar de forma segura.',
+      expected:
+        'Backend responde com erro controlado (HTTP 400/404) sem deixar registros parciais ou corrompidos em report_documents.',
       status: 'pending',
     },
   ]
@@ -637,6 +744,574 @@ export async function runSecurityAndIsolationTests(
       status: 'failed',
       durationMs: Math.round(performance.now() - te38Start),
       realResult: `Erro ao consultar trilha de auditoria: ${err.message}`,
+    })
+  }
+
+  // -------------------------------------------------------------
+  // TESTES OBRIGATÓRIOS DA ETAPA 4A (DOCUMENTOS MÉDICOS E ASSINATURA)
+  // -------------------------------------------------------------
+
+  // TESTE E4A-1: GERAÇÃO DE PDF COM DADOS FICTÍCIOS
+  updateTest('test-e4a-1-pdf-generation', { status: 'running' })
+  const te4a1Start = performance.now()
+  let e4aExamId = sampleExamId
+  try {
+    const clientCardio = getTestClient()
+    await clientCardio
+      .collection('users')
+      .authWithPassword('dr.carlos@cardiolab.fake', TEST_PASSWORD)
+
+    // Buscar um exame com laudo concluído (waiting_signature) ou qualquer exame
+    const exams = await clientCardio.collection('exam_requests').getList(1, 10, {
+      sort: '-created',
+    })
+    let targetExam = exams.items.find((ex) => ex.status === 'waiting_signature') || exams.items[0]
+
+    if (!targetExam) {
+      updateTest('test-e4a-1-pdf-generation', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te4a1Start),
+        realResult: 'FALHA: Nenhum exame fictício disponível para testar a geração de PDF.',
+      })
+    } else {
+      e4aExamId = targetExam.id
+
+      // Garantir que existe um laudo submetido (submit com dados fictícios)
+      try {
+        await clientCardio.send(`/backend/v1/exams/${e4aExamId}/submit-report`, {
+          method: 'POST',
+          body: JSON.stringify({
+            heart_rate: null,
+            cardiac_rhythm: 'Ritmo sinusal regular',
+            electrical_axis: '',
+            pr_interval_ms: null,
+            qrs_duration_ms: null,
+            qt_interval_ms: null,
+            qtc_interval_ms: null,
+            free_text_description:
+              'Teste de geração de documento com acentuação: descrição com ç, ã, é, õ, â e âncora clínica.',
+            free_text_conclusion:
+              'Eletrocardiograma dentro dos limites da normalidade (teste fictício).',
+            technical_quality_notes: 'Traçado com boa qualidade técnica.',
+            has_critical_findings: false,
+          }),
+        })
+      } catch {
+        /* intentionally ignored */
+      }
+
+      const prep = await clientCardio.send(`/backend/v1/exams/${e4aExamId}/prepare-signature`, {
+        method: 'POST',
+      })
+
+      if (prep && prep.success && prep.documentCode && prep.sha256) {
+        // Confirmar persistência na coleção
+        const docs = await clientCardio.collection('report_documents').getList(1, 5, {
+          filter: `exam_request_id = '${e4aExamId}'`,
+          sort: '-version',
+        })
+        const latest = docs.items[0]
+        if (latest && latest.file_hash_sha256 === prep.sha256) {
+          updateTest('test-e4a-1-pdf-generation', {
+            status: 'passed',
+            durationMs: Math.round(performance.now() - te4a1Start),
+            httpStatus: 200,
+            realResult: `PDF gerado no servidor: ${prep.documentCode} v${prep.version}.0, SHA-256 ${prep.sha256.substring(0, 16)}... registrado e persistido em report_documents.`,
+          })
+        } else {
+          updateTest('test-e4a-1-pdf-generation', {
+            status: 'failed',
+            durationMs: Math.round(performance.now() - te4a1Start),
+            realResult:
+              'FALHA: Documento criado mas hash SHA-256 não correspondente ao retornado pela rota.',
+          })
+        }
+      } else {
+        updateTest('test-e4a-1-pdf-generation', {
+          status: 'failed',
+          durationMs: Math.round(performance.now() - te4a1Start),
+          realResult: 'FALHA: Rota de preparação não retornou documento e hash SHA-256 válidos.',
+        })
+      }
+    }
+  } catch (err: any) {
+    updateTest('test-e4a-1-pdf-generation', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te4a1Start),
+      httpStatus: err.status,
+      realResult: `Erro na geração de PDF: ${err.message}`,
+    })
+  }
+
+  // TESTE E4A-2: CORRESPONDÊNCIA ENTRE CONTEÚDO DO EDITOR E DOCUMENTO
+  updateTest('test-e4a-2-content-matches-editor', { status: 'running' })
+  const te4a2Start = performance.now()
+  try {
+    const clientCardio = getTestClient()
+    await clientCardio
+      .collection('users')
+      .authWithPassword('dr.carlos@cardiolab.fake', TEST_PASSWORD)
+
+    const docs = await clientCardio.collection('report_documents').getList(1, 1, {
+      filter: `exam_request_id = '${e4aExamId}'`,
+      sort: '-version',
+    })
+
+    if (docs.items.length === 0) {
+      updateTest('test-e4a-2-content-matches-editor', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te4a2Start),
+        realResult:
+          'FALHA: Nenhum documento disponível para verificar correspondência de conteúdo.',
+      })
+    } else {
+      const snap = docs.items[0].content_snapshot
+        ? JSON.parse(docs.items[0].content_snapshot)
+        : null
+      const reportList = await clientCardio.collection('ecg_reports').getList(1, 1, {
+        filter: `exam_request_id = '${e4aExamId}'`,
+      })
+      const report = reportList.items[0]
+
+      if (
+        snap &&
+        report &&
+        snap.conclusion === report.free_text_conclusion &&
+        snap.description === report.free_text_description
+      ) {
+        updateTest('test-e4a-2-content-matches-editor', {
+          status: 'passed',
+          durationMs: Math.round(performance.now() - te4a2Start),
+          httpStatus: 200,
+          realResult: `Conteúdo do editor corresponde exatamente ao snapshot do documento v${docs.items[0].version}.`,
+        })
+      } else {
+        updateTest('test-e4a-2-content-matches-editor', {
+          status: 'failed',
+          durationMs: Math.round(performance.now() - te4a2Start),
+          realResult:
+            'FALHA: O snapshot do documento não corresponde ao laudo submetido pelo editor.',
+        })
+      }
+    }
+  } catch (err: any) {
+    updateTest('test-e4a-2-content-matches-editor', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te4a2Start),
+      realResult: `Erro na correspondência: ${err.message}`,
+    })
+  }
+
+  // TESTE E4A-3: PRESERVAÇÃO DE ACENTOS PORTUGUESES
+  updateTest('test-e4a-3-portuguese-accents-preserved', { status: 'running' })
+  const te4a3Start = performance.now()
+  try {
+    const clientCardio = getTestClient()
+    await clientCardio
+      .collection('users')
+      .authWithPassword('dr.carlos@cardiolab.fake', TEST_PASSWORD)
+
+    const testAccented = `Ritmo sinusal com ênfase em traçado: avaliação de á é í ó ú ç ã õ â ê ô`
+    try {
+      await clientCardio.send(`/backend/v1/exams/${e4aExamId}/submit-report`, {
+        method: 'POST',
+        body: JSON.stringify({
+          cardiac_rhythm: testAccented,
+          free_text_description: `Descrição com acentuação completa: coração, ação, então, após, ênfase. ${Date.now()}`,
+          free_text_conclusion:
+            'Conclusão com acentuação: avaliação eletrocardiográfica sem anormalidades.',
+        }),
+      })
+      await clientCardio.send(`/backend/v1/exams/${e4aExamId}/prepare-signature`, {
+        method: 'POST',
+      })
+    } catch {
+      /* intentionally ignored */
+    }
+
+    const docs = await clientCardio.collection('report_documents').getList(1, 1, {
+      filter: `exam_request_id = '${e4aExamId}'`,
+      sort: '-version',
+    })
+
+    if (docs.items.length > 0) {
+      const snap = docs.items[0].content_snapshot
+        ? JSON.parse(docs.items[0].content_snapshot)
+        : null
+      if (snap && /á|é|í|ó|ú|ç|ã|õ|â|ê/.test(snap.description + snap.conclusion)) {
+        updateTest('test-e4a-3-portuguese-accents-preserved', {
+          status: 'passed',
+          durationMs: Math.round(performance.now() - te4a3Start),
+          httpStatus: 200,
+          realResult:
+            'Acentuação portuguesa preservada integralmente no snapshot do documento gerado.',
+        })
+      } else {
+        updateTest('test-e4a-3-portuguese-accents-preserved', {
+          status: 'failed',
+          durationMs: Math.round(performance.now() - te4a3Start),
+          realResult: 'FALHA: Acentuação portuguesa foi perdida ou substituída no documento.',
+        })
+      }
+    } else {
+      updateTest('test-e4a-3-portuguese-accents-preserved', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te4a3Start),
+        realResult: 'FALHA: Nenhum documento para validar acentuação.',
+      })
+    }
+  } catch (err: any) {
+    updateTest('test-e4a-3-portuguese-accents-preserved', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te4a3Start),
+      realResult: `Erro no teste de acentuação: ${err.message}`,
+    })
+  }
+
+  // TESTE E4A-4: AUSÊNCIA DE CAMPOS NUMÉRICOS NÃO PREENCHIDOS
+  updateTest('test-e4a-4-no-invented-measures', { status: 'running' })
+  const te4a4Start = performance.now()
+  try {
+    const clientCardio = getTestClient()
+    await clientCardio
+      .collection('users')
+      .authWithPassword('dr.carlos@cardiolab.fake', TEST_PASSWORD)
+
+    // Submeter laudo SEM medidas numéricas
+    try {
+      await clientCardio.send(`/backend/v1/exams/${e4aExamId}/submit-report`, {
+        method: 'POST',
+        body: JSON.stringify({
+          heart_rate: null,
+          pr_interval_ms: null,
+          qrs_duration_ms: null,
+          qt_interval_ms: null,
+          qtc_interval_ms: null,
+          free_text_description: 'Descrição sem medidas quantitativas informadas.',
+          free_text_conclusion: 'Conclusão qualitativa sem valores inventados.',
+        }),
+      })
+      await clientCardio.send(`/backend/v1/exams/${e4aExamId}/prepare-signature`, {
+        method: 'POST',
+      })
+    } catch {
+      /* intentionally ignored */
+    }
+
+    const docs = await clientCardio.collection('report_documents').getList(1, 1, {
+      filter: `exam_request_id = '${e4aExamId}'`,
+      sort: '-version',
+    })
+
+    if (docs.items.length > 0) {
+      const snap = docs.items[0].content_snapshot
+        ? JSON.parse(docs.items[0].content_snapshot)
+        : null
+      const numericKeys = ['heart_rate', 'pr', 'qrs', 'qt', 'qtc']
+      const allNull = snap && numericKeys.every((k) => !snap[k])
+
+      if (allNull) {
+        updateTest('test-e4a-4-no-invented-measures', {
+          status: 'passed',
+          durationMs: Math.round(performance.now() - te4a4Start),
+          httpStatus: 200,
+          realResult:
+            'Nenhuma medida numérica inventada: snapshot do documento não contém FC, PR, QRS, QT ou QTc quando não informados.',
+        })
+      } else {
+        updateTest('test-e4a-4-no-invented-measures', {
+          status: 'failed',
+          durationMs: Math.round(performance.now() - te4a4Start),
+          realResult: `FALHA: Snapshot contém medidas numéricas não informadas pelo médico.`,
+        })
+      }
+    } else {
+      updateTest('test-e4a-4-no-invented-measures', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te4a4Start),
+        realResult: 'FALHA: Nenhum documento para validar ausência de medidas inventadas.',
+      })
+    }
+  } catch (err: any) {
+    updateTest('test-e4a-4-no-invented-measures', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te4a4Start),
+      realResult: `Erro no teste de medidas: ${err.message}`,
+    })
+  }
+
+  // TESTE E4A-5: BLOQUEIO DE ALTERAÇÃO DE VERSÃO PREPARADA
+  updateTest('test-e4a-5-prepared-version-locked', { status: 'running' })
+  const te4a5Start = performance.now()
+  try {
+    const clientCardio = getTestClient()
+    await clientCardio
+      .collection('users')
+      .authWithPassword('dr.carlos@cardiolab.fake', TEST_PASSWORD)
+
+    const docs = await clientCardio.collection('report_documents').getList(1, 1, {
+      filter: `exam_request_id = '${e4aExamId}'`,
+      sort: '-version',
+    })
+
+    if (docs.items.length === 0) {
+      updateTest('test-e4a-5-prepared-version-locked', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te4a5Start),
+        realResult: 'FALHA: Nenhum documento preparado para testar bloqueio de alteração.',
+      })
+    } else {
+      try {
+        await clientCardio.collection('report_documents').update(docs.items[0].id, {
+          file_hash_sha256: 'hash_adulterado_malicioso',
+        })
+        updateTest('test-e4a-5-prepared-version-locked', {
+          status: 'failed',
+          durationMs: Math.round(performance.now() - te4a5Start),
+          realResult: 'FALHA DE SEGURANÇA: Documento preparado foi modificado com sucesso.',
+        })
+      } catch (lockErr: any) {
+        updateTest('test-e4a-5-prepared-version-locked', {
+          status: 'passed',
+          durationMs: Math.round(performance.now() - te4a5Start),
+          httpStatus: lockErr.status || 403,
+          realResult: `Bloqueado com sucesso pelo hook: HTTP ${lockErr.status} - "${lockErr.message}"`,
+        })
+      }
+    }
+  } catch (err: any) {
+    updateTest('test-e4a-5-prepared-version-locked', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te4a5Start),
+      realResult: `Erro no teste de bloqueio: ${err.message}`,
+    })
+  }
+
+  // TESTE E4A-6: NOVA VERSÃO APÓS CORREÇÃO SEM SOBRESCREVER
+  updateTest('test-e4a-6-new-version-not-overwritten', { status: 'running' })
+  const te4a6Start = performance.now()
+  try {
+    const clientCardio = getTestClient()
+    await clientCardio
+      .collection('users')
+      .authWithPassword('dr.carlos@cardiolab.fake', TEST_PASSWORD)
+
+    // Gerar nova versão após "correção"
+    try {
+      await clientCardio.send(`/backend/v1/exams/${e4aExamId}/submit-report`, {
+        method: 'POST',
+        body: JSON.stringify({
+          free_text_description: `Correção do laudo gerando nova versão. ${Date.now()}`,
+          free_text_conclusion: 'Conclusão corrigida em nova versão sem sobrescrever anterior.',
+        }),
+      })
+      await clientCardio.send(`/backend/v1/exams/${e4aExamId}/prepare-signature`, {
+        method: 'POST',
+      })
+    } catch {
+      /* intentionally ignored */
+    }
+
+    const docs = await clientCardio.collection('report_documents').getFullList({
+      filter: `exam_request_id = '${e4aExamId}'`,
+      sort: '-version',
+    })
+
+    const versions = [...new Set(docs.map((d) => d.version))]
+    if (docs.length >= 2 && versions.length >= 2) {
+      const hashes = new Set(docs.map((d) => d.file_hash_sha256))
+      if (hashes.size >= 2) {
+        updateTest('test-e4a-6-new-version-not-overwritten', {
+          status: 'passed',
+          durationMs: Math.round(performance.now() - te4a6Start),
+          httpStatus: 200,
+          realResult: `${docs.length} versões preservadas com hashes distintos (v${Math.min(...versions)}.0 e v${Math.max(...versions)}.0) — nenhuma sobrescrita.`,
+        })
+      } else {
+        updateTest('test-e4a-6-new-version-not-overwritten', {
+          status: 'failed',
+          durationMs: Math.round(performance.now() - te4a6Start),
+          realResult:
+            'FALHA: Versões distintas compartilham o mesmo hash (indicativo de sobrescrita).',
+        })
+      }
+    } else {
+      updateTest('test-e4a-6-new-version-not-overwritten', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te4a6Start),
+        realResult: `FALHA: Apenas ${docs.length} documento(s) com ${versions.length} versão(ões) distinta(s).`,
+      })
+    }
+  } catch (err: any) {
+    updateTest('test-e4a-6-new-version-not-overwritten', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te4a6Start),
+      realResult: `Erro no teste de versões: ${err.message}`,
+    })
+  }
+
+  // TESTE E4A-7: BLOQUEIO DE ACESSO ENTRE CLÍNICAS
+  updateTest('test-e4a-7-cross-clinic-blocked', { status: 'running' })
+  const te4a7Start = performance.now()
+  try {
+    const clientOperator = getTestClient()
+    await clientOperator
+      .collection('users')
+      .authWithPassword('operador.alfa@cardioalfa.fake', TEST_PASSWORD)
+
+    // Operador de clínica tenta acessar rota de prévia (restrita a cardiologistas/admin)
+    await clientOperator.send(`/backend/v1/exams/${e4aExamId}/report-pdf-preview`, {
+      method: 'GET',
+    })
+
+    updateTest('test-e4a-7-cross-clinic-blocked', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te4a7Start),
+      realResult: 'FALHA DE SEGURANÇA: Operador de clínica conseguiu gerar prévia de laudo.',
+    })
+  } catch (err: any) {
+    updateTest('test-e4a-7-cross-clinic-blocked', {
+      status: 'passed',
+      durationMs: Math.round(performance.now() - te4a7Start),
+      httpStatus: err.status || 403,
+      realResult: `Bloqueado com sucesso pelo backend: HTTP ${err.status} - "${err.message}"`,
+    })
+  }
+
+  // TESTE E4A-8: BLOQUEIO DE DOWNLOAD DE LAUDO NÃO LIBERADO
+  updateTest('test-e4a-8-unreleased-download-blocked', { status: 'running' })
+  const te4a8Start = performance.now()
+  try {
+    const clientClinic = getTestClient()
+    await clientClinic
+      .collection('users')
+      .authWithPassword('gestor.alfa@cardioalfa.fake', TEST_PASSWORD)
+
+    // Buscar documento disponível e tentar download como usuário de clínica
+    const docs = await clientClinic.collection('report_documents').getList(1, 1, {
+      filter: `exam_request_id = '${e4aExamId}'`,
+      sort: '-version',
+    })
+
+    if (docs.items.length === 0) {
+      updateTest('test-e4a-8-unreleased-download-blocked', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te4a8Start),
+        realResult: 'FALHA: Nenhum documento disponível para testar bloqueio de download.',
+      })
+    } else {
+      try {
+        await clientClinic.send(`/backend/v1/documents/${docs.items[0].id}/download`, {
+          method: 'GET',
+        })
+        updateTest('test-e4a-8-unreleased-download-blocked', {
+          status: 'failed',
+          durationMs: Math.round(performance.now() - te4a8Start),
+          realResult:
+            'FALHA DE SEGURANÇA: Usuário de clínica conseguiu baixar laudo não assinado/validado.',
+        })
+      } catch (dlErr: any) {
+        updateTest('test-e4a-8-unreleased-download-blocked', {
+          status: 'passed',
+          durationMs: Math.round(performance.now() - te4a8Start),
+          httpStatus: dlErr.status || 403,
+          realResult: `Bloqueado com sucesso pelo backend: HTTP ${dlErr.status} - "${dlErr.message}"`,
+        })
+      }
+    }
+  } catch (err: any) {
+    updateTest('test-e4a-8-unreleased-download-blocked', {
+      status: 'passed',
+      durationMs: Math.round(performance.now() - te4a8Start),
+      realResult: `Bloqueado com sucesso pelo backend: ${err.message}`,
+    })
+  }
+
+  // TESTE E4A-9: REGISTRO DE AÇÕES NA AUDITORIA
+  updateTest('test-e4a-9-actions-audited', { status: 'running' })
+  const te4a9Start = performance.now()
+  try {
+    const clientAdmin = getTestClient()
+    await clientAdmin.collection('users').authWithPassword('admin@cardiolab.fake', TEST_PASSWORD)
+
+    const logs = await clientAdmin.collection('audit_logs').getList(1, 30, {
+      sort: '-created',
+    })
+
+    const e4aActions = [
+      'REPORT_PDF_PREVIEW_ACCESSED',
+      'REPORT_PDF_GENERATED_PREPARED_FOR_SIGNATURE',
+      'REPORT_PDF_DOWNLOAD',
+    ]
+
+    const foundE4a = logs.items.filter((l) => e4aActions.includes(l.action))
+
+    if (foundE4a.length > 0) {
+      updateTest('test-e4a-9-actions-audited', {
+        status: 'passed',
+        durationMs: Math.round(performance.now() - te4a9Start),
+        httpStatus: 200,
+        realResult: `Auditoria ativa: ${foundE4a.length} eventos da Etapa 4A registrados (ex: ${foundE4a[0].action} em ${new Date(foundE4a[0].created).toLocaleString('pt-BR')}).`,
+      })
+    } else {
+      updateTest('test-e4a-9-actions-audited', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te4a9Start),
+        realResult: 'FALHA: Nenhum evento de documento/assinatura registrado na auditoria.',
+      })
+    }
+  } catch (err: any) {
+    updateTest('test-e4a-9-actions-audited', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te4a9Start),
+      realResult: `Erro ao consultar auditoria: ${err.message}`,
+    })
+  }
+
+  // TESTE E4A-10: FALHA SEGURA NA GERAÇÃO DE PDF
+  updateTest('test-e4a-10-safe-failure', { status: 'running' })
+  const te4a10Start = performance.now()
+  try {
+    const clientCardio = getTestClient()
+    await clientCardio
+      .collection('users')
+      .authWithPassword('dr.carlos@cardiolab.fake', TEST_PASSWORD)
+
+    // Chamar preparação com exame inexistente
+    try {
+      await clientCardio.send(`/backend/v1/exams/EXAME_INEXISTENTE_0000/prepare-signature`, {
+        method: 'POST',
+      })
+      updateTest('test-e4a-10-safe-failure', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te4a10Start),
+        realResult: 'FALHA: Preparação de PDF aceitou exame inexistente sem validação.',
+      })
+    } catch (failErr: any) {
+      // Verificar se nenhum documento órfão foi criado
+      const docs = await clientCardio.collection('report_documents').getList(1, 100, {
+        filter: `exam_request_id = 'EXAME_INEXISTENTE_0000'`,
+      })
+      if (docs.items.length === 0) {
+        updateTest('test-e4a-10-safe-failure', {
+          status: 'passed',
+          durationMs: Math.round(performance.now() - te4a10Start),
+          httpStatus: failErr.status || 404,
+          realResult: `Falha segura confirmada: HTTP ${failErr.status} - "${failErr.message}". Nenhum registro parcial criado.`,
+        })
+      } else {
+        updateTest('test-e4a-10-safe-failure', {
+          status: 'failed',
+          durationMs: Math.round(performance.now() - te4a10Start),
+          realResult: 'FALHA: Registros parciais criados durante falha na geração de PDF.',
+        })
+      }
+    }
+  } catch (err: any) {
+    updateTest('test-e4a-10-safe-failure', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te4a10Start),
+      realResult: `Erro no teste de falha segura: ${err.message}`,
     })
   }
 

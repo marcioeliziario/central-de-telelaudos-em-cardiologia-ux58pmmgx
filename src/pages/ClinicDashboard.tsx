@@ -615,6 +615,25 @@ export default function ClinicDashboard() {
               </table>
             </div>
           </Card>
+
+          {/* ETAPA 4A: Política de liberação de laudos assinados */}
+          <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
+            <div className="font-semibold flex items-center gap-1.5 text-slate-900">
+              <Lock className="w-3.5 h-3.5 text-slate-500" />
+              <span>Liberação de Laudos Definitivos (Etapa 4A — Documentos e Assinatura):</span>
+            </div>
+            <p>
+              Laudos com status <strong>Aguardando Assinatura</strong> ou posterior permanecem{' '}
+              <strong>INDISPONÍVEIS para download</strong> até que o documento PDF seja assinado
+              digitalmente com certificado ICP-Brasil (PAdES) e a assinatura seja validada
+              criptograficamente pela prestadora.
+            </p>
+            <p className="text-slate-500 text-[11px]">
+              Nenhum documento é liberado à clínica antes da validação da assinatura. O download só
+              será habilitado nesta tela após a etapa de integração com o provedor de assinatura
+              qualificada.
+            </p>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

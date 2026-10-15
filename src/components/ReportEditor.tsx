@@ -12,6 +12,7 @@ import {
   templateService,
   draftService,
   criticalFindingService,
+  documentService,
 } from '@/services/telelaudosService'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -50,6 +51,11 @@ import {
   Lock,
   Loader2,
   Info,
+  FileText,
+  Eye,
+  PenTool,
+  Layers,
+  ShieldCheck,
 } from 'lucide-react'
 
 interface ReportEditorProps {
@@ -116,6 +122,30 @@ export default function ReportEditor({
 
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false)
   const [isLoadingInitial, setIsLoadingInitial] = useState<boolean>(true)
+
+  // ETAPA 4A: Documentos (PDF) e Assinatura Digital
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState<boolean>(false)
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
+  const [previewMeta, setPreviewMeta] = useState<{
+    documentCode: string
+    version: number
+    sha256: string
+    fileSizeBytes: number
+    disclaimer: string
+  } | null>(null)
+  const [isLoadingPreview, setIsLoadingPreview] = useState<boolean>(false)
+  const [isPreparing, setIsPreparing] = useState<boolean>(false)
+  const [prepareResult, setPrepareResult] = useState<{
+    documentCode: string
+    version: number
+    sha256: string
+  } | null>(null)
+  const [isVersionsModalOpen, setIsVersionsModalOpen] = useState<boolean>(false)
+  const [documents, setDocuments] = useState<any[]>([])
+  const [isLoadingDocs, setIsLoadingDocs] = useState<boolean>(false)
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState<boolean>(false)
+  const [signatures, setSignatures] = useState<any[]>([])
+  const [isLoadingSigs, setIsLoadingSigs] = useState<boolean>(false)
 
   // Referência para debounce do auto-save
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -328,6 +358,88 @@ export default function ReportEditor({
       alert(`Erro ao devolver exame: ${err.message}`)
     } finally {
       setIsReturning(false)
+    }
+  }
+
+  // ETAPA 4A: Visualizar prévia do PDF antes de iniciar a assinatura
+  const handlePreviewPdf = async () => {
+    setIsLoadingPreview(true)
+    try {
+      const res = await documentService.getPreview(exam.id)
+      if (res.success && res.pdfRawString) {
+        // Converte a string PDF recebida em Blob para renderização local (sem URL pública)
+        const bytes = new Uint8Array(res.pdfRawString.length)
+        for (let i = 0; i < res.pdfRawString.length; i++) {
+          bytes[i] = res.pdfRawString.charCodeAt(i) & 0xff
+        }
+        const blob = new Blob([bytes], { type: 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        setPreviewPdfUrl(url)
+        setPreviewMeta({
+          documentCode: res.documentCode,
+          version: res.version,
+          sha256: res.sha256,
+          fileSizeBytes: res.fileSizeBytes,
+          disclaimer: res.disclaimer,
+        })
+        setIsPreviewModalOpen(true)
+      }
+    } catch (err: any) {
+      alert(`Erro ao gerar prévia do PDF: ${err.message}`)
+    } finally {
+      setIsLoadingPreview(false)
+    }
+  }
+
+  // ETAPA 4A: Preparar PDF definitivo para assinatura digital (bloqueia a versão)
+  const handlePrepareSignature = async () => {
+    if (
+      !confirm(
+        'Esta ação gera o PDF definitivo desta versão, calcula o hash SHA-256 e BLOQUEIA o conteúdo contra alterações. Para corrigir depois, será criada uma NOVA versão. Confirmar?',
+      )
+    ) {
+      return
+    }
+    setIsPreparing(true)
+    try {
+      const res = await documentService.prepareForSignature(exam.id)
+      setPrepareResult({
+        documentCode: res.documentCode,
+        version: res.version,
+        sha256: res.sha256,
+      })
+    } catch (err: any) {
+      alert(`Erro ao preparar documento para assinatura: ${err.message}`)
+    } finally {
+      setIsPreparing(false)
+    }
+  }
+
+  // ETAPA 4A: Consultar versões do documento
+  const handleOpenVersions = async () => {
+    setIsVersionsModalOpen(true)
+    setIsLoadingDocs(true)
+    try {
+      const docs = await documentService.getDocumentsForExam(exam.id)
+      setDocuments(docs)
+    } catch (err) {
+      console.error('Erro ao carregar documentos:', err)
+    } finally {
+      setIsLoadingDocs(false)
+    }
+  }
+
+  // ETAPA 4A: Consultar status da assinatura
+  const handleOpenSignatureStatus = async () => {
+    setIsSignatureModalOpen(true)
+    setIsLoadingSigs(true)
+    try {
+      const sigs = await documentService.getSignaturesForExam(exam.id)
+      setSignatures(sigs)
+    } catch (err) {
+      console.error('Erro ao carregar assinaturas:', err)
+    } finally {
+      setIsLoadingSigs(false)
     }
   }
 
@@ -696,6 +808,97 @@ export default function ReportEditor({
           </div>
         </div>
 
+        {/* ETAPA 4A: Barra de Documentos e Assinatura Digital */}
+        <div className="p-3 bg-slate-50/70 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-[#0E4C92] shrink-0" />
+            <div>
+              <span className="font-bold text-slate-900">
+                Documento Médico (PDF) & Assinatura Digital
+              </span>
+              <p className="text-[11px] text-slate-500">
+                Conferência do documento, preparação para assinatura PAdES ICP-Brasil e consulta de
+                versões
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handlePreviewPdf}
+              disabled={isLoadingPreview}
+              className="h-7 text-xs gap-1 border-slate-300 bg-white"
+              title="Conferir o documento completo antes de iniciar a assinatura"
+            >
+              {isLoadingPreview ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Eye className="w-3 h-3 text-[#0E4C92]" />
+              )}
+              <span>Visualizar PDF</span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handlePrepareSignature}
+              disabled={isPreparing}
+              className="h-7 text-xs gap-1 border-[#0E4C92] text-[#0E4C92] bg-white hover:bg-sky-50"
+              title="Gerar PDF definitivo com hash SHA-256 e bloquear esta versão"
+            >
+              {isPreparing ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <PenTool className="w-3 h-3" />
+              )}
+              <span>Preparar PDF para Assinatura</span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleOpenVersions}
+              className="h-7 text-xs gap-1 border-slate-300 bg-white"
+              title="Consultar versões já geradas deste documento"
+            >
+              <Layers className="w-3 h-3 text-slate-600" />
+              <span>Versões</span>
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleOpenSignatureStatus}
+              className="h-7 text-xs gap-1 border-slate-300 bg-white"
+              title="Visualizar status da assinatura digital"
+            >
+              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+              <span>Status da Assinatura</span>
+            </Button>
+          </div>
+        </div>
+
+        {prepareResult && (
+          <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-300 text-xs text-emerald-900 space-y-1">
+            <div className="font-bold flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Documento preparado para assinatura digital</span>
+            </div>
+            <p>
+              Código: <span className="font-mono">{prepareResult.documentCode}</span> • Versão:{' '}
+              <span className="font-mono">{prepareResult.version}.0</span> • SHA-256:{' '}
+              <span className="font-mono break-all">{prepareResult.sha256}</span>
+            </p>
+            <p className="text-[11px]">
+              Esta versão está BLOQUEADA para alterações. Qualquer correção gerará uma nova versão
+              sem sobrescrever a anterior. Status da assinatura: NAO_INICIADA (liberação clínica
+              bloqueada).
+            </p>
+          </div>
+        )}
+
         {/* Rodapé: Envio para Aguardando Assinatura */}
         <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
@@ -1032,6 +1235,215 @@ export default function ReportEditor({
               }}
             >
               Entendido, retornar à Fila
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL 5 (ETAPA 4A): PRÉVIA DO PDF DO LAUDO */}
+      <Dialog open={isPreviewModalOpen} onOpenChange={setIsPreviewModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-[#0E4C92]" />
+              <span>Prévia do Documento (PDF)</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-600">
+              Conferência integral do laudo ANTES de iniciar a assinatura digital.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="p-2.5 bg-amber-50 rounded border border-amber-300 text-xs text-amber-950 font-bold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+            <span>
+              {previewMeta?.disclaimer || 'DOCUMENTO NÃO ASSINADO. SEM VALIDADE COMO LAUDO FINAL.'}
+            </span>
+          </div>
+
+          {previewPdfUrl && (
+            <iframe
+              src={previewPdfUrl}
+              title="Prévia do Laudo em PDF"
+              className="w-full h-[55vh] border border-slate-200 rounded"
+            />
+          )}
+
+          {previewMeta && (
+            <div className="p-2.5 bg-slate-50 rounded border border-slate-200 text-[11px] text-slate-700 space-y-1">
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <span>
+                  Código: <span className="font-mono">{previewMeta.documentCode}</span>
+                </span>
+                <span>
+                  Versão: <span className="font-mono">{previewMeta.version}.0</span>
+                </span>
+                <span>
+                  Tamanho: <span className="font-mono">{previewMeta.fileSizeBytes} bytes</span>
+                </span>
+              </div>
+              <div>
+                SHA-256 (prévia): <span className="font-mono break-all">{previewMeta.sha256}</span>
+              </div>
+              <p className="text-slate-500">
+                A prévia NÃO contém carimbo, imagem de assinatura ou qualquer representação de
+                assinatura digital válida.
+              </p>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setIsPreviewModalOpen(false)}>
+              Fechar Prévia
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL 6 (ETAPA 4A): VERSÕES DO DOCUMENTO */}
+      <Dialog open={isVersionsModalOpen} onOpenChange={setIsVersionsModalOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold flex items-center gap-1.5">
+              <Layers className="w-4 h-4 text-[#0E4C92]" />
+              <span>Versões do Documento</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-600">
+              Registros imutáveis das versões de PDF preparadas para assinatura
+            </DialogDescription>
+          </DialogHeader>
+
+          {isLoadingDocs ? (
+            <div className="py-6 flex justify-center">
+              <Loader2 className="w-5 h-5 animate-spin text-[#0E4C92]" />
+            </div>
+          ) : documents.length === 0 ? (
+            <p className="text-xs text-slate-400 text-center py-6">
+              Nenhuma versão de documento foi preparada ainda.
+            </p>
+          ) : (
+            <div className="max-h-80 overflow-y-auto space-y-2 py-2">
+              {documents.map((d) => (
+                <div
+                  key={d.id}
+                  className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1"
+                >
+                  <div className="flex items-center justify-between font-semibold">
+                    <span className="text-slate-900 font-mono">{d.document_code}</span>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] bg-sky-50 text-sky-800 border-sky-300"
+                    >
+                      v{d.version}.0
+                    </Badge>
+                  </div>
+                  <div className="text-[11px] text-slate-600">
+                    Gerado em: {new Date(d.generated_at).toLocaleString('pt-BR')}
+                  </div>
+                  <div className="text-[11px] text-slate-600">
+                    SHA-256: <span className="font-mono break-all">{d.file_hash_sha256}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                    <Lock className="w-3 h-3" />
+                    <span>
+                      {d.is_locked ? 'Versão bloqueada para alterações' : 'Versão aberta'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setIsVersionsModalOpen(false)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL 7 (ETAPA 4A): STATUS DA ASSINATURA DIGITAL */}
+      <Dialog open={isSignatureModalOpen} onOpenChange={setIsSignatureModalOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <span>Status da Assinatura Digital</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-600">
+              Transações de assinatura PAdES ICP-Brasil registradas para este exame
+            </DialogDescription>
+          </DialogHeader>
+
+          {isLoadingSigs ? (
+            <div className="py-6 flex justify-center">
+              <Loader2 className="w-5 h-5 animate-spin text-[#0E4C92]" />
+            </div>
+          ) : signatures.length === 0 ? (
+            <p className="text-xs text-slate-400 text-center py-6">
+              Nenhuma transação de assinatura registrada. Prepare o PDF primeiro.
+            </p>
+          ) : (
+            <div className="max-h-80 overflow-y-auto space-y-2 py-2">
+              {signatures.map((s) => {
+                const statusColors: Record<string, string> = {
+                  NAO_INICIADA: 'bg-slate-100 text-slate-700 border-slate-300',
+                  PENDENTE: 'bg-amber-50 text-amber-800 border-amber-300',
+                  PROCESSANDO: 'bg-sky-50 text-sky-800 border-sky-300',
+                  ASSINADA: 'bg-indigo-50 text-indigo-800 border-indigo-300',
+                  VALIDADA: 'bg-emerald-50 text-emerald-800 border-emerald-300',
+                  FALHA: 'bg-red-50 text-red-800 border-red-300',
+                }
+                return (
+                  <div
+                    key={s.id}
+                    className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-1"
+                  >
+                    <div className="flex items-center justify-between font-semibold">
+                      <span className="text-slate-900">
+                        {s.expand?.report_document_id?.document_code || 'Documento'}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className={`text-[10px] ${statusColors[s.signature_status] || ''}`}
+                      >
+                        {s.signature_status}
+                      </Badge>
+                    </div>
+                    <div className="text-[11px] text-slate-600">
+                      Provedor: {s.signing_provider || '—'} • Transação:{' '}
+                      <span className="font-mono">{s.transaction_id || '—'}</span>
+                    </div>
+                    <div className="text-[11px] text-slate-600">
+                      Solicitado:{' '}
+                      {s.requested_at ? new Date(s.requested_at).toLocaleString('pt-BR') : '—'}
+                      {s.completed_at
+                        ? ` • Concluído: ${new Date(s.completed_at).toLocaleString('pt-BR')}`
+                        : ''}
+                    </div>
+                    <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
+                      <Lock className="w-3 h-3" />
+                      <span>
+                        Liberação à clínica:{' '}
+                        {s.is_clinically_released
+                          ? 'AUTORIZADA (após validação criptográfica)'
+                          : 'BLOQUEADA — aguardando assinatura e validação'}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="p-2.5 bg-slate-50 rounded border border-slate-200 text-[11px] text-slate-600">
+            Estados previstos: NAO_INICIADA → PENDENTE → PROCESSANDO → ASSINADA → VALIDADA (ou
+            FALHA). Nenhum documento é liberado à clínica antes da validação criptográfica da
+            assinatura.
+          </div>
+
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setIsSignatureModalOpen(false)}>
+              Fechar
             </Button>
           </DialogFooter>
         </DialogContent>

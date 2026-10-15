@@ -269,3 +269,69 @@ export interface AuthUser {
   is_active?: boolean
   created: string
 }
+
+// -------------------------------------------------------------
+// ETAPA 4A: DOCUMENTOS MÉDICOS E ASSINATURA DIGITAL
+// -------------------------------------------------------------
+
+export interface ReportDocument {
+  id: string
+  exam_request_id: string
+  organization_id: string
+  patient_id: string
+  doctor_id?: string
+  ecg_report_id?: string
+  document_code: string
+  version: number
+  pdf_file: string
+  file_hash_sha256: string
+  file_size_bytes?: number
+  is_preview?: boolean
+  is_prepared_for_signature?: boolean
+  is_locked?: boolean
+  created_by?: string
+  generated_at: string
+  content_snapshot?: string
+  created: string
+  updated: string
+  expand?: {
+    exam_request_id?: ExamRequest
+    organization_id?: Organization
+    patient_id?: Patient
+    doctor_id?: Doctor
+    ecg_report_id?: ECGReport
+  }
+}
+
+export type SignatureStatus =
+  | 'NAO_INICIADA'
+  | 'PENDENTE'
+  | 'PROCESSANDO'
+  | 'ASSINADA'
+  | 'VALIDADA'
+  | 'FALHA'
+
+export interface ReportSignature {
+  id: string
+  report_document_id: string
+  exam_request_id: string
+  doctor_id?: string
+  signing_provider?: string
+  transaction_id?: string
+  signature_status: SignatureStatus
+  requested_at?: string
+  completed_at?: string
+  signature_evidence?: string
+  signed_pdf_file?: string
+  signed_file_hash_sha256?: string
+  cryptographic_validation_result?: string
+  is_clinically_released?: boolean
+  rejection_reason?: string
+  created: string
+  updated: string
+  expand?: {
+    report_document_id?: ReportDocument
+    exam_request_id?: ExamRequest
+    doctor_id?: Doctor
+  }
+}

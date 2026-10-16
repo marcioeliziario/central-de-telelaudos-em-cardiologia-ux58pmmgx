@@ -65,6 +65,7 @@ import {
   Bookmark,
   Check,
 } from 'lucide-react'
+import pb from '@/lib/pocketbase/client'
 import { BirdIdSigningModal } from '@/components/BirdIdSigningModal'
 import { PdfViewerModal } from '@/components/PdfViewerModal'
 import { useAuth } from '@/contexts/AuthContext'

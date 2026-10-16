@@ -195,6 +195,39 @@ export interface ReportTemplate {
   updated: string
 }
 
+export type ReportMode = 'structured' | 'free_text'
+
+export interface DoctorPreference {
+  id: string
+  user_id: string
+  doctor_id?: string
+  default_report_mode: ReportMode
+  auto_generate_proposal_enabled?: boolean
+  created: string
+  updated: string
+  expand?: {
+    user_id?: AuthUser
+    doctor_id?: Doctor
+  }
+}
+
+export interface PersonalReportTemplate {
+  id: string
+  user_id: string
+  doctor_id?: string
+  title: string
+  category: string
+  description: string
+  conclusion: string
+  is_active: boolean
+  created: string
+  updated: string
+  expand?: {
+    user_id?: AuthUser
+    doctor_id?: Doctor
+  }
+}
+
 export interface ReportDraft {
   id: string
   exam_request_id: string
@@ -202,6 +235,7 @@ export interface ReportDraft {
   author_id: string
   version: number
   is_latest: boolean
+  report_mode?: ReportMode
   heart_rate?: number | null
   cardiac_rhythm?: string
   electrical_axis?: string
@@ -233,6 +267,7 @@ export interface ECGReport {
   patient_id: string
   doctor_id?: string
   status: 'draft' | 'waiting_signature' | 'signed_mock_prohibited' | 'archived'
+  report_mode?: ReportMode
   heart_rate?: number | null
   cardiac_rhythm?: string
   electrical_axis?: string

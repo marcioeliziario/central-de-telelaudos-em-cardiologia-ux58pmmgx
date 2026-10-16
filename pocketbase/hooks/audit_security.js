@@ -294,6 +294,9 @@ routerAdd('POST', '/backend/v1/exams/{id}/draft', (e) => {
     draft.set('free_text_description', body.free_text_description || '')
     draft.set('free_text_conclusion', body.free_text_conclusion || '')
     draft.set('technical_quality_notes', body.technical_quality_notes || '')
+    if (body.report_mode) {
+      draft.set('report_mode', body.report_mode)
+    }
 
     txApp.save(draft)
     createdDraft = draft
@@ -428,6 +431,9 @@ routerAdd('POST', '/backend/v1/exams/{id}/submit-report', (e) => {
     reportRecord.set('free_text_conclusion', conclusion.trim())
     reportRecord.set('technical_quality_notes', body.technical_quality_notes || '')
     reportRecord.set('has_critical_findings', Boolean(body.has_critical_findings))
+    if (body.report_mode) {
+      reportRecord.set('report_mode', body.report_mode)
+    }
 
     txApp.save(reportRecord)
     createdReport = reportRecord
@@ -673,22 +679,28 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
     )
   }
 
-  // Extrair campos numéricos SOMENTE se informados
+  // Modalidade do laudo: structured ou free_text
+  const reportMode = reportData.getString('report_mode') || 'structured'
+
+  // Extrair campos numéricos SOMENTE se modalidade estruturada e se informados
   const numericalFields = []
   const hr = reportData.getInt('heart_rate')
-  if (hr > 0) numericalFields.push({ label: 'Freq. Cardíaca', value: hr, unit: 'bpm' })
   const rhythm = reportData.getString('cardiac_rhythm')
-  if (rhythm) numericalFields.push({ label: 'Ritmo', value: rhythm, unit: '' })
   const axis = reportData.getString('electrical_axis')
-  if (axis) numericalFields.push({ label: 'Eixo Elétrico (SÂQRS)', value: axis, unit: '' })
   const pr = reportData.getInt('pr_interval_ms')
-  if (pr > 0) numericalFields.push({ label: 'Intervalo PR', value: pr, unit: 'ms' })
   const qrs = reportData.getInt('qrs_duration_ms')
-  if (qrs > 0) numericalFields.push({ label: 'Duração QRS', value: qrs, unit: 'ms' })
   const qt = reportData.getInt('qt_interval_ms')
-  if (qt > 0) numericalFields.push({ label: 'Intervalo QT', value: qt, unit: 'ms' })
   const qtc = reportData.getInt('qtc_interval_ms')
-  if (qtc > 0) numericalFields.push({ label: 'Intervalo QTc', value: qtc, unit: 'ms' })
+
+  if (reportMode !== 'free_text') {
+    if (hr > 0) numericalFields.push({ label: 'Freq. Cardíaca', value: hr, unit: 'bpm' })
+    if (rhythm) numericalFields.push({ label: 'Ritmo', value: rhythm, unit: '' })
+    if (axis) numericalFields.push({ label: 'Eixo Elétrico (SÂQRS)', value: axis, unit: '' })
+    if (pr > 0) numericalFields.push({ label: 'Intervalo PR', value: pr, unit: 'ms' })
+    if (qrs > 0) numericalFields.push({ label: 'Duração QRS', value: qrs, unit: 'ms' })
+    if (qt > 0) numericalFields.push({ label: 'Intervalo QT', value: qt, unit: 'ms' })
+    if (qtc > 0) numericalFields.push({ label: 'Intervalo QTc', value: qtc, unit: 'ms' })
+  }
 
   let docVersion = 1
   try {
@@ -1387,21 +1399,26 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
     }
   } catch (_) {}
 
+  const reportMode = reportData.getString('report_mode') || 'structured'
+
   const numericalFields = []
   const hr = reportData.getInt('heart_rate')
-  if (hr > 0) numericalFields.push({ label: 'Freq. Cardíaca', value: hr, unit: 'bpm' })
   const rhythm = reportData.getString('cardiac_rhythm')
-  if (rhythm) numericalFields.push({ label: 'Ritmo', value: rhythm, unit: '' })
   const axis = reportData.getString('electrical_axis')
-  if (axis) numericalFields.push({ label: 'Eixo Elétrico (SÂQRS)', value: axis, unit: '' })
   const pr = reportData.getInt('pr_interval_ms')
-  if (pr > 0) numericalFields.push({ label: 'Intervalo PR', value: pr, unit: 'ms' })
   const qrs = reportData.getInt('qrs_duration_ms')
-  if (qrs > 0) numericalFields.push({ label: 'Duração QRS', value: qrs, unit: 'ms' })
   const qt = reportData.getInt('qt_interval_ms')
-  if (qt > 0) numericalFields.push({ label: 'Intervalo QT', value: qt, unit: 'ms' })
   const qtc = reportData.getInt('qtc_interval_ms')
-  if (qtc > 0) numericalFields.push({ label: 'Intervalo QTc', value: qtc, unit: 'ms' })
+
+  if (reportMode !== 'free_text') {
+    if (hr > 0) numericalFields.push({ label: 'Freq. Cardíaca', value: hr, unit: 'bpm' })
+    if (rhythm) numericalFields.push({ label: 'Ritmo', value: rhythm, unit: '' })
+    if (axis) numericalFields.push({ label: 'Eixo Elétrico (SÂQRS)', value: axis, unit: '' })
+    if (pr > 0) numericalFields.push({ label: 'Intervalo PR', value: pr, unit: 'ms' })
+    if (qrs > 0) numericalFields.push({ label: 'Duração QRS', value: qrs, unit: 'ms' })
+    if (qt > 0) numericalFields.push({ label: 'Intervalo QT', value: qt, unit: 'ms' })
+    if (qtc > 0) numericalFields.push({ label: 'Intervalo QTc', value: qtc, unit: 'ms' })
+  }
 
   const escapePdfText = (str) => {
     if (!str) return ''

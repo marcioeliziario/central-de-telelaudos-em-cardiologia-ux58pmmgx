@@ -58,8 +58,17 @@ import {
   ShieldCheck,
   Download,
   Upload,
+  SlidersHorizontal,
+  Wand2,
+  Plus,
+  Trash2,
+  Bookmark,
+  Check,
 } from 'lucide-react'
 import { BirdIdSigningModal } from '@/components/BirdIdSigningModal'
+import { useAuth } from '@/contexts/AuthContext'
+import { personalTemplateService, doctorPreferenceService } from '@/services/telelaudosService'
+import { ReportMode, PersonalReportTemplate } from '@/types/telelaudos'
 
 interface ReportEditorProps {
   exam: ExamRequest
@@ -72,10 +81,29 @@ export default function ReportEditor({
   onReportSubmitted,
   onReturnRequested,
 }: ReportEditorProps) {
+  const { user } = useAuth()
+
+  // Modalidade do laudo: 'structured' ou 'free_text'
+  const [reportMode, setReportMode] = useState<ReportMode>('structured')
+  const [isSavingPreference, setIsSavingPreference] = useState<boolean>(false)
+  const [preferenceFeedback, setPreferenceFeedback] = useState<string | null>(null)
+
   // Modelos e histórico
   const [templates, setTemplates] = useState<ReportTemplate[]>([])
+  const [personalTemplates, setPersonalTemplates] = useState<PersonalReportTemplate[]>([])
   const [draftHistory, setDraftHistory] = useState<ReportDraft[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
+
+  // Modais de Modelos Pessoais e Síntese de Texto
+  const [isNewPersonalTemplateOpen, setIsNewPersonalTemplateOpen] = useState<boolean>(false)
+  const [newTemplateTitle, setNewTemplateTitle] = useState<string>('')
+  const [newTemplateCategory, setNewTemplateCategory] = useState<string>('Normalidade')
+  const [isSavingPersonalTemplate, setIsSavingPersonalTemplate] = useState<boolean>(false)
+  const [isGenerateConfirmOpen, setIsGenerateConfirmOpen] = useState<boolean>(false)
+  const [generatedProposalCandidate, setGeneratedProposalCandidate] = useState<{
+    description: string
+    conclusion: string
+  } | null>(null)
 
   // Estados dos Campos Clínicos - SBC 2022
   // Quantitativos opcionais e editáveis
@@ -163,30 +191,39 @@ export default function ReportEditor({
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFirstMountRef = useRef<boolean>(true)
 
-  // Carregar Templates e Rascunho mais recente
+  // Carregar Templates, Modelos Pessoais, Preferências e Rascunho mais recente
   useEffect(() => {
     let isMounted = true
 
     const loadData = async () => {
       setIsLoadingInitial(true)
       try {
-        const [tpls, latestDraft, history, criticals] = await Promise.all([
+        const [tpls, latestDraft, history, criticals, personalTpls, pref] = await Promise.all([
           templateService.getAll(),
           draftService.getLatestForExam(exam.id),
           draftService.getHistoryForExam(exam.id),
           criticalFindingService.getForExam(exam.id),
+          user?.id ? personalTemplateService.getForUser(user.id) : Promise.resolve([]),
+          user?.id ? doctorPreferenceService.getForUser(user.id) : Promise.resolve(null),
         ])
 
         if (!isMounted) return
 
         setTemplates(tpls)
+        setPersonalTemplates(personalTpls)
         setDraftHistory(history)
         if (criticals && criticals.length > 0) {
           setHasCriticalFindingRegistered(true)
         }
 
-        // Se houver rascunho salvo, restaurar
+        // Se houver rascunho salvo, restaurar (prioridade sobre preferência geral)
         if (latestDraft) {
+          if (latestDraft.report_mode) {
+            setReportMode(latestDraft.report_mode)
+          } else if (pref?.default_report_mode) {
+            setReportMode(pref.default_report_mode)
+          }
+
           setHeartRate(latestDraft.heart_rate ? String(latestDraft.heart_rate) : '')
           setElectricalAxis(latestDraft.electrical_axis || '')
           setPrIntervalMs(latestDraft.pr_interval_ms ? String(latestDraft.pr_interval_ms) : '')
@@ -207,6 +244,10 @@ export default function ReportEditor({
           setLastSavedTime(new Date(latestDraft.updated).toLocaleTimeString('pt-BR'))
           setSaveStatus('saved')
         } else {
+          // Sem rascunho: aplicar preferência do médico se configurada
+          if (pref?.default_report_mode) {
+            setReportMode(pref.default_report_mode)
+          }
           // Valores iniciais padrão neutros
           setCardiacRhythm('Ritmo sinusal regular')
         }
@@ -225,13 +266,14 @@ export default function ReportEditor({
       isMounted = false
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
     }
-  }, [exam.id])
+  }, [exam.id, user?.id])
 
   // Lógica de Salvamento do Rascunho
   const performSaveDraft = async () => {
     setSaveStatus('saving')
     try {
       const payload = {
+        report_mode: reportMode,
         heart_rate: heartRate ? Number(heartRate) : null,
         cardiac_rhythm: cardiacRhythm,
         electrical_axis: electricalAxis,
@@ -280,6 +322,7 @@ export default function ReportEditor({
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
     }
   }, [
+    reportMode,
     heartRate,
     electricalAxis,
     prIntervalMs,
@@ -297,8 +340,37 @@ export default function ReportEditor({
     freeTextConclusion,
   ])
 
-  // Aplicar Modelo de Redação (SEM preencher medidas numéricas fictícias)
+  // Salvar preferência individual do médico
+  const handleSaveDefaultPreference = async (mode: ReportMode) => {
+    if (!user?.id) return
+    setIsSavingPreference(true)
+    setPreferenceFeedback(null)
+    try {
+      await doctorPreferenceService.savePreference(user.id, mode)
+      setPreferenceFeedback(
+        `Preferência de modalidade padrão definida para: ${mode === 'free_text' ? 'Texto Livre' : 'Estruturado'}.`,
+      )
+      setTimeout(() => setPreferenceFeedback(null), 3500)
+    } catch (err: any) {
+      alert(`Erro ao salvar preferência médica: ${err.message || err}`)
+    } finally {
+      setIsSavingPreference(false)
+    }
+  }
+
+  // Aplicar Modelo de Redação Oficial SBC (SEM preencher medidas numéricas fictícias)
   const handleApplyTemplate = (tplId: string) => {
+    // Pode vir de template SBC oficial ou modelo pessoal
+    if (tplId.startsWith('personal:')) {
+      const pId = tplId.replace('personal:', '')
+      const pt = personalTemplates.find((t) => t.id === pId)
+      if (!pt) return
+      setSelectedTemplateId(tplId)
+      if (pt.description) setFreeTextDescription(pt.description)
+      if (pt.conclusion) setFreeTextConclusion(pt.conclusion)
+      return
+    }
+
     const tpl = templates.find((t) => t.id === tplId)
     if (!tpl) return
 
@@ -311,6 +383,136 @@ export default function ReportEditor({
     if (tpl.q_waves) setQWaves(tpl.q_waves)
     if (tpl.description) setFreeTextDescription(tpl.description)
     if (tpl.conclusion) setFreeTextConclusion(tpl.conclusion)
+  }
+
+  // Salvar redação atual como Modelo Pessoal
+  const handleSaveAsPersonalTemplate = async () => {
+    if (!user?.id) return
+    if (!newTemplateTitle.trim()) {
+      alert('Informe o título do modelo pessoal.')
+      return
+    }
+    if (!freeTextDescription.trim() && !freeTextConclusion.trim()) {
+      alert('Preencha a descrição ou conclusão para criar o modelo.')
+      return
+    }
+
+    setIsSavingPersonalTemplate(true)
+    try {
+      const created = await personalTemplateService.create({
+        user_id: user.id,
+        title: newTemplateTitle.trim(),
+        category: newTemplateCategory.trim() || 'Geral',
+        description: freeTextDescription.trim(),
+        conclusion: freeTextConclusion.trim(),
+      })
+      setPersonalTemplates((prev) => [created, ...prev])
+      setIsNewPersonalTemplateOpen(false)
+      setNewTemplateTitle('')
+      alert('Modelo pessoal salvo com sucesso!')
+    } catch (err: any) {
+      alert(`Erro ao salvar modelo pessoal: ${err.message || err}`)
+    } finally {
+      setIsSavingPersonalTemplate(false)
+    }
+  }
+
+  // Excluir Modelo Pessoal
+  const handleDeletePersonalTemplate = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!confirm('Deseja excluir este modelo pessoal?')) return
+    try {
+      await personalTemplateService.remove(id)
+      setPersonalTemplates((prev) => prev.filter((t) => t.id !== id))
+    } catch (err: any) {
+      alert(`Erro ao remover modelo: ${err.message || err}`)
+    }
+  }
+
+  // Gerar proposta de texto a partir dos campos estruturados (botão explícito com confirmação)
+  const handleRequestGenerateProposal = () => {
+    const parts: string[] = []
+
+    if (cardiacRhythm) {
+      parts.push(`Ritmo: ${cardiacRhythm}.`)
+    }
+    if (heartRate) {
+      parts.push(`Frequência cardíaca estimada em ${heartRate} bpm.`)
+    }
+    if (electricalAxis) {
+      parts.push(`Eixo elétrico do QRS a ${electricalAxis}.`)
+    }
+    if (prIntervalMs) {
+      parts.push(`Intervalo PR medindo ${prIntervalMs} ms.`)
+    }
+    if (qrsDurationMs) {
+      parts.push(`Duração do complexo QRS em ${qrsDurationMs} ms.`)
+    }
+    if (qtIntervalMs || qtcIntervalMs) {
+      const qtText = [
+        qtIntervalMs ? `QT ${qtIntervalMs} ms` : '',
+        qtcIntervalMs ? `QTc (Bazett) ${qtcIntervalMs} ms` : '',
+      ]
+        .filter(Boolean)
+        .join(', ')
+      parts.push(`Intervalos: ${qtText}.`)
+    }
+    if (pWaveDesc) {
+      parts.push(`Onda P: ${pWaveDesc}.`)
+    }
+    if (avConduction) {
+      parts.push(`Condução atrioventricular: ${avConduction}.`)
+    }
+    if (ivConduction) {
+      parts.push(`Condução intraventricular: ${ivConduction}.`)
+    }
+    if (repolarization) {
+      parts.push(`Repolarização ventricular: ${repolarization}.`)
+    }
+    if (qWaves) {
+      parts.push(`Achados de ondas Q: ${qWaves}.`)
+    }
+    if (technicalQuality) {
+      parts.push(`Qualidade técnica: ${technicalQuality}.`)
+    }
+
+    const proposedDescription =
+      parts.length > 0
+        ? parts.join(' ')
+        : 'Traçado eletrocardiográfico avaliado conforme parâmetros estruturados.'
+
+    // Proposta diagnóstica cautelosa (NÃO assume normalidade automática sem base)
+    let proposedConclusion = ''
+    if (
+      cardiacRhythm.toLowerCase().includes('sinusal') &&
+      (!ivConduction || ivConduction.toLowerCase().includes('normal')) &&
+      (!repolarization || repolarization.toLowerCase().includes('sem alter'))
+    ) {
+      proposedConclusion = 'Traçado eletrocardiográfico dentro dos limites da normalidade.'
+    } else {
+      proposedConclusion = 'Análise eletrocardiográfica conclusiva a critério do cardiologista.'
+    }
+
+    setGeneratedProposalCandidate({
+      description: proposedDescription,
+      conclusion: proposedConclusion,
+    })
+
+    // Se já houver texto escrito, exige confirmação para não sobrescrever acidentalmente
+    if (freeTextDescription.trim() || freeTextConclusion.trim()) {
+      setIsGenerateConfirmOpen(true)
+    } else {
+      setFreeTextDescription(proposedDescription)
+      setFreeTextConclusion(proposedConclusion)
+    }
+  }
+
+  const handleConfirmApplyGeneratedProposal = () => {
+    if (generatedProposalCandidate) {
+      setFreeTextDescription(generatedProposalCandidate.description)
+      setFreeTextConclusion(generatedProposalCandidate.conclusion)
+    }
+    setIsGenerateConfirmOpen(false)
   }
 
   // Submeter laudo para Aguardando Assinatura (SEM liberação direta)
@@ -327,18 +529,23 @@ export default function ReportEditor({
     setIsSubmittingReport(true)
     try {
       const payload = {
-        heart_rate: heartRate ? Number(heartRate) : null,
-        cardiac_rhythm: cardiacRhythm,
-        electrical_axis: electricalAxis,
-        pr_interval_ms: prIntervalMs ? Number(prIntervalMs) : null,
-        qrs_duration_ms: qrsDurationMs ? Number(qrsDurationMs) : null,
-        qt_interval_ms: qtIntervalMs ? Number(qtIntervalMs) : null,
-        qtc_interval_ms: qtcIntervalMs ? Number(qtcIntervalMs) : null,
-        p_wave_description: pWaveDesc,
-        av_conduction_alterations: avConduction,
-        iv_conduction_alterations: ivConduction,
-        repolarization_alterations: repolarization,
-        q_waves_findings: qWaves,
+        report_mode: reportMode,
+        heart_rate: reportMode === 'free_text' ? null : heartRate ? Number(heartRate) : null,
+        cardiac_rhythm: reportMode === 'free_text' ? '' : cardiacRhythm,
+        electrical_axis: reportMode === 'free_text' ? '' : electricalAxis,
+        pr_interval_ms:
+          reportMode === 'free_text' ? null : prIntervalMs ? Number(prIntervalMs) : null,
+        qrs_duration_ms:
+          reportMode === 'free_text' ? null : qrsDurationMs ? Number(qrsDurationMs) : null,
+        qt_interval_ms:
+          reportMode === 'free_text' ? null : qtIntervalMs ? Number(qtIntervalMs) : null,
+        qtc_interval_ms:
+          reportMode === 'free_text' ? null : qtcIntervalMs ? Number(qtcIntervalMs) : null,
+        p_wave_description: reportMode === 'free_text' ? '' : pWaveDesc,
+        av_conduction_alterations: reportMode === 'free_text' ? '' : avConduction,
+        iv_conduction_alterations: reportMode === 'free_text' ? '' : ivConduction,
+        repolarization_alterations: reportMode === 'free_text' ? '' : repolarization,
+        q_waves_findings: reportMode === 'free_text' ? '' : qWaves,
         free_text_description: freeTextDescription,
         free_text_conclusion: freeTextConclusion,
         technical_quality_notes: technicalQuality,
@@ -495,19 +702,45 @@ export default function ReportEditor({
 
   return (
     <div className="space-y-4">
-      {/* Topo do Editor de Laudos: Status de Salvamento e Biblioteca de Modelos */}
+      {/* Topo do Editor de Laudos: Modalidade, Status de Salvamento e Biblioteca de Modelos */}
       <Card className="border-[#E3E6E8] bg-white shadow-[0_1px_3px_rgba(47,57,66,0.03)] rounded-xl overflow-hidden">
         <div className="p-3.5 flex flex-wrap items-center justify-between gap-3 border-b border-[#E3E6E8] bg-[#F7F6F4]/50">
           <div className="flex items-center gap-2.5">
             <FileCheck className="w-4 h-4 text-[#4A90D9]" />
             <div>
               <h3 className="text-xs font-bold text-[#2F3942]">
-                Editor de Laudos Eletrocardiográficos
+                Editor Flexível de Laudos Eletrocardiográficos
               </h3>
               <p className="text-[11px] text-[#6F7780]">
-                Diretriz SBC 2022 • Laudo Estruturado e Conclusivo
+                Diretriz SBC 2022 • Alternância Livre sem perda de dados
               </p>
             </div>
+          </div>
+
+          {/* Seletor de Modalidade: Texto Livre vs Laudo Estruturado */}
+          <div className="flex items-center gap-1.5 bg-white p-1 rounded-lg border border-[#E3E6E8]">
+            <button
+              type="button"
+              onClick={() => setReportMode('structured')}
+              className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
+                reportMode === 'structured'
+                  ? 'bg-[#2F3942] text-white shadow-2xs font-semibold'
+                  : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4]'
+              }`}
+            >
+              Estruturado
+            </button>
+            <button
+              type="button"
+              onClick={() => setReportMode('free_text')}
+              className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
+                reportMode === 'free_text'
+                  ? 'bg-[#4A90D9] text-white shadow-2xs font-semibold'
+                  : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4]'
+              }`}
+            >
+              Texto Livre
+            </button>
           </div>
 
           {/* Indicador Visual do Salvamento Automático */}
@@ -564,16 +797,97 @@ export default function ReportEditor({
           </div>
         </div>
 
-        {/* Barra de Seleção de Modelos de Laudo */}
+        {/* Linha de Preferências e Ações Rápidas */}
+        <div className="px-3.5 py-2 bg-[#F7F6F4]/30 border-b border-[#E3E6E8] flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-[#6F7780]">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-[#4A90D9]" />
+            <span>
+              Modalidade atual:{' '}
+              <strong className="text-[#2F3942]">
+                {reportMode === 'free_text' ? 'Texto Livre' : 'Estruturado SBC'}
+              </strong>
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => handleSaveDefaultPreference(reportMode)}
+              disabled={isSavingPreference}
+              className="h-6 text-[11px] px-2 text-[#4A90D9] hover:bg-[#4A90D9]/10"
+              title="Definir esta modalidade como padrão para seus próximos exames"
+            >
+              {isSavingPreference ? 'Salvando...' : 'Definir como meu padrão'}
+            </Button>
+            {preferenceFeedback && (
+              <span className="text-[11px] text-emerald-700 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                {preferenceFeedback}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Botão explícito para síntese de texto a partir do estruturado */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRequestGenerateProposal}
+              className="h-7 text-xs gap-1 border-[#4A90D9]/30 text-[#4A90D9] bg-[#4A90D9]/5 hover:bg-[#4A90D9]/10 font-medium"
+              title="Gerar proposta de redação médica a partir dos campos estruturados"
+            >
+              <Wand2 className="w-3.5 h-3.5 text-[#4A90D9]" />
+              <span>Sintetizar Redação a partir do Estruturado</span>
+            </Button>
+
+            {/* Criar Modelo Pessoal */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsNewPersonalTemplateOpen(true)}
+              className="h-7 text-xs gap-1 border-[#E3E6E8] text-[#2F3942] hover:bg-white"
+              title="Salvar descrição e conclusão atuais como modelo reutilizável do médico"
+            >
+              <Plus className="w-3.5 h-3.5 text-[#6F7780]" />
+              <span>Salvar como Modelo Pessoal</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Barra de Seleção de Modelos (SBC Oficial + Modelos Pessoais do Cardiologista) */}
         <div className="p-3 bg-white flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2 flex-1 min-w-[280px]">
             <BookOpen className="w-4 h-4 text-[#4A90D9] shrink-0" />
             <div className="w-full">
               <Select value={selectedTemplateId} onValueChange={handleApplyTemplate}>
                 <SelectTrigger className="text-xs bg-white h-8 border-[#E3E6E8]">
-                  <SelectValue placeholder="Carregar Modelo SBC (Atalho de redação editável)" />
+                  <SelectValue placeholder="Carregar Modelo (SBC Oficial ou Pessoal do Cardiologista)" />
                 </SelectTrigger>
                 <SelectContent>
+                  {personalTemplates.length > 0 && (
+                    <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#4A90D9] bg-[#F7F6F4]">
+                      Meus Modelos Pessoais
+                    </div>
+                  )}
+                  {personalTemplates.map((pt) => (
+                    <div
+                      key={`personal:${pt.id}`}
+                      className="flex items-center justify-between pr-2 hover:bg-slate-50"
+                    >
+                      <SelectItem value={`personal:${pt.id}`} className="text-xs flex-1">
+                        <span className="font-semibold text-[#2F3942]">[Pessoal]</span> {pt.title}
+                      </SelectItem>
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeletePersonalTemplate(pt.id, e)}
+                        className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors"
+                        title="Excluir este modelo pessoal"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-[#6F7780] bg-[#F7F6F4] mt-1">
+                    Modelos SBC Diretriz
+                  </div>
                   {templates.map((tpl) => (
                     <SelectItem key={tpl.id} value={tpl.id} className="text-xs">
                       [{tpl.category}] {tpl.title}
@@ -585,241 +899,276 @@ export default function ReportEditor({
           </div>
 
           <div className="text-[11px] text-[#6F7780] italic max-w-sm">
-            Modelos são sugestões de redação e NÃO diagnósticos automáticos. Medidas numéricas devem
-            ser mensuradas pelo médico.
+            Modelos e textos gerados são sugestões editáveis. Conclusões de normalidade jamais são
+            atribuídas sem confirmação médica.
           </div>
         </div>
       </Card>
 
-      {/* Formulário Estruturado Conforme Diretriz SBC 2022 com Tipografia Refinada */}
+      {/* Corpo do Editor: seletivo por modalidade com preservação integral de estado */}
       <Card className="border-[#E3E6E8] bg-white shadow-[0_1px_3px_rgba(47,57,66,0.03)] rounded-xl p-5 space-y-5">
-        {/* Bloco 1: Parâmetros Quantitativos Opcionais */}
-        <div>
-          <div className="flex items-center justify-between pb-2 border-b border-[#E3E6E8] mb-3">
-            <h4 className="text-xs font-bold text-[#2F3942] uppercase tracking-wider flex items-center gap-1.5">
-              <span>1. Medidas Eletrocardiográficas</span>
-              <span className="text-[10px] text-[#6F7780] font-normal lowercase">
-                (quantitativas opcionais)
-              </span>
-            </h4>
-            <span className="text-[10px] text-[#6F7780]">Preenchimento médico manual</span>
+        {reportMode === 'structured' ? (
+          <>
+            {/* Bloco 1: Parâmetros Quantitativos Opcionais */}
+            <div>
+              <div className="flex items-center justify-between pb-2 border-b border-[#E3E6E8] mb-3">
+                <h4 className="text-xs font-bold text-[#2F3942] uppercase tracking-wider flex items-center gap-1.5">
+                  <span>1. Medidas Eletrocardiográficas</span>
+                  <span className="text-[10px] text-[#6F7780] font-normal lowercase">
+                    (quantitativas opcionais)
+                  </span>
+                </h4>
+                <span className="text-[10px] text-[#6F7780]">Preenchimento médico manual</span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+                <div className="min-w-0">
+                  <Label
+                    className="text-[11px] font-semibold text-[#2F3942] block truncate"
+                    title="Frequência Cardíaca em bpm"
+                  >
+                    FC (bpm)
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="Ex: 72"
+                    value={heartRate}
+                    onChange={(e) => setHeartRate(e.target.value)}
+                    className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <Label
+                    className="text-[11px] font-semibold text-[#2F3942] block truncate"
+                    title="Eixo Elétrico do QRS"
+                  >
+                    Eixo QRS (°)
+                  </Label>
+                  <Input
+                    placeholder="Ex: +45°"
+                    value={electricalAxis}
+                    onChange={(e) => setElectricalAxis(e.target.value)}
+                    className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <Label
+                    className="text-[11px] font-semibold text-[#2F3942] block truncate"
+                    title="Intervalo PR em milissegundos"
+                  >
+                    Intervalo PR (ms)
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="Ex: 160"
+                    value={prIntervalMs}
+                    onChange={(e) => setPrIntervalMs(e.target.value)}
+                    className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <Label
+                    className="text-[11px] font-semibold text-[#2F3942] block truncate"
+                    title="Duração do QRS em milissegundos"
+                  >
+                    Duração QRS (ms)
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="Ex: 88"
+                    value={qrsDurationMs}
+                    onChange={(e) => setQrsDurationMs(e.target.value)}
+                    className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <Label
+                    className="text-[11px] font-semibold text-[#2F3942] block truncate"
+                    title="Intervalo QT em milissegundos"
+                  >
+                    Intervalo QT (ms)
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="Ex: 380"
+                    value={qtIntervalMs}
+                    onChange={(e) => setQtIntervalMs(e.target.value)}
+                    className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <Label
+                    className="text-[11px] font-semibold text-[#2F3942] block truncate"
+                    title="QT Corrigido por Bazett em milissegundos"
+                  >
+                    QTc Bazett (ms)
+                  </Label>
+                  <Input
+                    type="number"
+                    placeholder="Ex: 410"
+                    value={qtcIntervalMs}
+                    onChange={(e) => setQtcIntervalMs(e.target.value)}
+                    className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Bloco 2: Análise Qualitativa dos Segmentos (SBC 2022) */}
+            <div>
+              <div className="pb-2 border-b border-[#E3E6E8] mb-3">
+                <h4 className="text-xs font-bold text-[#2F3942] uppercase tracking-wider">
+                  2. Avaliação Morfológica e Condução
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-[11px] font-semibold text-[#2F3942]">Ritmo Cardíaco</Label>
+                  <Input
+                    placeholder="Ex: Ritmo sinusal regular"
+                    value={cardiacRhythm}
+                    onChange={(e) => setCardiacRhythm(e.target.value)}
+                    className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[11px] font-semibold text-[#2F3942]">
+                    Descrição da Onda P
+                  </Label>
+                  <Input
+                    placeholder="Ex: Positiva em D1, D2 e aVF, duração e amplitude normais"
+                    value={pWaveDesc}
+                    onChange={(e) => setPWaveDesc(e.target.value)}
+                    className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[11px] font-semibold text-[#2F3942]">
+                    Condução Atrioventricular
+                  </Label>
+                  <Input
+                    placeholder="Ex: Condução AV normal, relação 1:1 preservada"
+                    value={avConduction}
+                    onChange={(e) => setAvConduction(e.target.value)}
+                    className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[11px] font-semibold text-[#2F3942]">
+                    Condução Intraventricular
+                  </Label>
+                  <Input
+                    placeholder="Ex: Condução intraventricular normal (ou BDR, BRE, BDAS...)"
+                    value={ivConduction}
+                    onChange={(e) => setIvConduction(e.target.value)}
+                    className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[11px] font-semibold text-[#2F3942]">
+                    Repolarização Ventricular (ST-T / QT)
+                  </Label>
+                  <Input
+                    placeholder="Ex: Sem alterações primárias da repolarização ventricular"
+                    value={repolarization}
+                    onChange={(e) => setRepolarization(e.target.value)}
+                    className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[11px] font-semibold text-[#2F3942]">
+                    Ondas Q e Achados Relevantes
+                  </Label>
+                  <Input
+                    placeholder="Ex: Ausência de ondas Q patológicas de necrose"
+                    value={qWaves}
+                    onChange={(e) => setQWaves(e.target.value)}
+                    className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Bloco 3: Qualidade Técnica do Traçado */}
+            <div>
+              <Label className="text-[11px] text-[#2F3942] font-semibold">
+                Avaliação da Qualidade Técnica do Traçado (Item 2 SBC 2022)
+              </Label>
+              <Input
+                value={technicalQuality}
+                onChange={(e) => setTechnicalQuality(e.target.value)}
+                placeholder="Ex: Traçado legível, calibração N e 25mm/s, sem artefatos de tremor muscular"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+              />
+            </div>
+          </>
+        ) : (
+          /* MODALIDADE TEXTO LIVRE: campos amplos e redimensionáveis */
+          <div className="p-4 bg-[#F7F6F4]/40 rounded-xl border border-[#E3E6E8] space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bookmark className="w-4 h-4 text-[#4A90D9]" />
+                <h4 className="text-xs font-bold text-[#2F3942]">Modalidade Texto Livre Ativa</h4>
+              </div>
+              <Badge
+                variant="outline"
+                className="text-[10px] bg-white text-[#4A90D9] border-[#4A90D9]/30"
+              >
+                Sem obrigatoriedade de campos estruturados
+              </Badge>
+            </div>
+            <p className="text-[11px] text-[#6F7780] leading-relaxed">
+              Escreva diretamente o laudo eletrocardiográfico e a conclusão diagnóstica. Caso decida
+              voltar ao modo estruturado a qualquer momento, todos os campos previamente preenchidos
+              permanecem preservados.
+            </p>
           </div>
+        )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-            <div className="min-w-0">
-              <Label
-                className="text-[11px] font-semibold text-[#2F3942] block truncate"
-                title="Frequência Cardíaca em bpm"
-              >
-                FC (bpm)
-              </Label>
-              <Input
-                type="number"
-                placeholder="Ex: 72"
-                value={heartRate}
-                onChange={(e) => setHeartRate(e.target.value)}
-                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-              />
-            </div>
-            <div className="min-w-0">
-              <Label
-                className="text-[11px] font-semibold text-[#2F3942] block truncate"
-                title="Eixo Elétrico do QRS"
-              >
-                Eixo QRS (°)
-              </Label>
-              <Input
-                placeholder="Ex: +45°"
-                value={electricalAxis}
-                onChange={(e) => setElectricalAxis(e.target.value)}
-                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-              />
-            </div>
-            <div className="min-w-0">
-              <Label
-                className="text-[11px] font-semibold text-[#2F3942] block truncate"
-                title="Intervalo PR em milissegundos"
-              >
-                Intervalo PR (ms)
-              </Label>
-              <Input
-                type="number"
-                placeholder="Ex: 160"
-                value={prIntervalMs}
-                onChange={(e) => setPrIntervalMs(e.target.value)}
-                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-              />
-            </div>
-            <div className="min-w-0">
-              <Label
-                className="text-[11px] font-semibold text-[#2F3942] block truncate"
-                title="Duração do QRS em milissegundos"
-              >
-                Duração QRS (ms)
-              </Label>
-              <Input
-                type="number"
-                placeholder="Ex: 88"
-                value={qrsDurationMs}
-                onChange={(e) => setQrsDurationMs(e.target.value)}
-                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-              />
-            </div>
-            <div className="min-w-0">
-              <Label
-                className="text-[11px] font-semibold text-[#2F3942] block truncate"
-                title="Intervalo QT em milissegundos"
-              >
-                Intervalo QT (ms)
-              </Label>
-              <Input
-                type="number"
-                placeholder="Ex: 380"
-                value={qtIntervalMs}
-                onChange={(e) => setQtIntervalMs(e.target.value)}
-                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-              />
-            </div>
-            <div className="min-w-0">
-              <Label
-                className="text-[11px] font-semibold text-[#2F3942] block truncate"
-                title="QT Corrigido por Bazett em milissegundos"
-              >
-                QTc Bazett (ms)
-              </Label>
-              <Input
-                type="number"
-                placeholder="Ex: 410"
-                value={qtcIntervalMs}
-                onChange={(e) => setQtcIntervalMs(e.target.value)}
-                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Bloco 2: Análise Qualitativa dos Segmentos (SBC 2022) */}
-        <div>
-          <div className="pb-2 border-b border-[#E3E6E8] mb-3">
-            <h4 className="text-xs font-bold text-[#2F3942] uppercase tracking-wider">
-              2. Avaliação Morfológica e Condução
-            </h4>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <Label className="text-[11px] font-semibold text-[#2F3942]">Ritmo Cardíaco</Label>
-              <Input
-                placeholder="Ex: Ritmo sinusal regular"
-                value={cardiacRhythm}
-                onChange={(e) => setCardiacRhythm(e.target.value)}
-                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-              />
-            </div>
-            <div>
-              <Label className="text-[11px] font-semibold text-[#2F3942]">
-                Descrição da Onda P
-              </Label>
-              <Input
-                placeholder="Ex: Positiva em D1, D2 e aVF, duração e amplitude normais"
-                value={pWaveDesc}
-                onChange={(e) => setPWaveDesc(e.target.value)}
-                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-              />
-            </div>
-            <div>
-              <Label className="text-[11px] font-semibold text-[#2F3942]">
-                Condução Atrioventricular
-              </Label>
-              <Input
-                placeholder="Ex: Condução AV normal, relação 1:1 preservada"
-                value={avConduction}
-                onChange={(e) => setAvConduction(e.target.value)}
-                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-              />
-            </div>
-            <div>
-              <Label className="text-[11px] font-semibold text-[#2F3942]">
-                Condução Intraventricular
-              </Label>
-              <Input
-                placeholder="Ex: Condução intraventricular normal (ou BDR, BRE, BDAS...)"
-                value={ivConduction}
-                onChange={(e) => setIvConduction(e.target.value)}
-                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-              />
-            </div>
-            <div>
-              <Label className="text-[11px] font-semibold text-[#2F3942]">
-                Repolarização Ventricular (ST-T / QT)
-              </Label>
-              <Input
-                placeholder="Ex: Sem alterações primárias da repolarização ventricular"
-                value={repolarization}
-                onChange={(e) => setRepolarization(e.target.value)}
-                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-              />
-            </div>
-            <div>
-              <Label className="text-[11px] font-semibold text-[#2F3942]">
-                Ondas Q e Achados Relevantes
-              </Label>
-              <Input
-                placeholder="Ex: Ausência de ondas Q patológicas de necrose"
-                value={qWaves}
-                onChange={(e) => setQWaves(e.target.value)}
-                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Bloco 3: Qualidade Técnica do Traçado */}
-        <div>
-          <Label className="text-[11px] text-[#2F3942] font-semibold">
-            Avaliação da Qualidade Técnica do Traçado (Item 2 SBC 2022)
-          </Label>
-          <Input
-            value={technicalQuality}
-            onChange={(e) => setTechnicalQuality(e.target.value)}
-            placeholder="Ex: Traçado legível, calibração N e 25mm/s, sem artefatos de tremor muscular"
-            className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
-          />
-        </div>
-
-        {/* Bloco 4: Descrição e Conclusão em Texto Livre (Obrigatórias) */}
-        <div className="space-y-3.5 pt-2 border-t border-[#E3E6E8]">
+        {/* Bloco de Redação em Texto Livre (Comum às modalidades, redimensionável e amplo) */}
+        <div className="space-y-4 pt-2 border-t border-[#E3E6E8]">
           <div>
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold text-[#2F3942]">
-                Descrição Eletrocardiográfica Detalhada (Texto Livre) *
+                Descrição Eletrocardiográfica Detalhada *
               </Label>
               <span className="text-[10px] text-[#6F7780]">
-                Área expandida para redação minuciosa
+                {reportMode === 'free_text'
+                  ? 'Redação livre ampla (redimensionável)'
+                  : 'Área expandida para redação minuciosa'}
               </span>
             </div>
             <Textarea
-              rows={5}
+              rows={reportMode === 'free_text' ? 10 : 5}
               value={freeTextDescription}
               onChange={(e) => setFreeTextDescription(e.target.value)}
-              placeholder="Descreva detalhadamente os achados do traçado eletrocardiográfico..."
-              className="text-xs mt-1.5 border-[#E3E6E8] focus:border-[#4A90D9] leading-relaxed resize-y min-h-[90px]"
+              placeholder={
+                reportMode === 'free_text'
+                  ? 'Descreva livremente o traçado (ritmo, condução, intervalos, repolarização, sobrecargas, achados especiais)...'
+                  : 'Descreva detalhadamente os achados do traçado eletrocardiográfico...'
+              }
+              className={`text-xs mt-1.5 border-[#E3E6E8] focus:border-[#4A90D9] leading-relaxed resize-y ${
+                reportMode === 'free_text' ? 'min-h-[180px]' : 'min-h-[90px]'
+              }`}
             />
           </div>
 
           <div>
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold text-[#2F3942]">
-                Conclusão Eletrocardiográfica Diagnóstica (Texto Livre) *
+                Conclusão Eletrocardiográfica Diagnóstica *
               </Label>
               <span className="text-[10px] text-[#6F7780]">Síntese diagnóstica final</span>
             </div>
             <Textarea
-              rows={3}
+              rows={reportMode === 'free_text' ? 5 : 3}
               value={freeTextConclusion}
               onChange={(e) => setFreeTextConclusion(e.target.value)}
-              placeholder="Ex: Eletrocardiograma dentro dos limites da normalidade."
-              className="text-xs mt-1.5 font-semibold text-[#2F3942] border-[#E3E6E8] focus:border-[#4A90D9] leading-relaxed resize-y min-h-[70px]"
+              placeholder="Ex: 1. Ritmo sinusal regular. 2. Traçado dentro dos limites da normalidade."
+              className={`text-xs mt-1.5 font-semibold text-[#2F3942] border-[#E3E6E8] focus:border-[#4A90D9] leading-relaxed resize-y ${
+                reportMode === 'free_text' ? 'min-h-[100px]' : 'min-h-[70px]'
+              }`}
             />
           </div>
         </div>
@@ -1040,6 +1389,131 @@ export default function ReportEditor({
           </Button>
         </div>
       </Card>
+
+      {/* MODAL 0A: CRIAR NOVO MODELO PESSOAL DO CARDIOLOGISTA */}
+      <Dialog open={isNewPersonalTemplateOpen} onOpenChange={setIsNewPersonalTemplateOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold flex items-center gap-1.5 text-[#2F3942]">
+              <Bookmark className="w-4 h-4 text-[#4A90D9]" />
+              <span>Salvar como Modelo Pessoal</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#6F7780]">
+              Crie um modelo próprio a partir da descrição e conclusão preenchidas para reutilizar
+              em futuros laudos.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2 text-xs">
+            <div>
+              <Label className="text-xs font-semibold text-[#2F3942]">Título do Modelo *</Label>
+              <Input
+                placeholder="Ex: ECG Normal Adulto - Dr. Carlos"
+                value={newTemplateTitle}
+                onChange={(e) => setNewTemplateTitle(e.target.value)}
+                className="text-xs mt-1 border-[#E3E6E8]"
+              />
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-[#2F3942]">Categoria</Label>
+              <Input
+                placeholder="Ex: Normalidade, Isquemia, Arritmias..."
+                value={newTemplateCategory}
+                onChange={(e) => setNewTemplateCategory(e.target.value)}
+                className="text-xs mt-1 border-[#E3E6E8]"
+              />
+            </div>
+
+            <div className="p-2.5 bg-[#F7F6F4] rounded-lg border border-[#E3E6E8] text-[11px] space-y-1 text-[#6F7780]">
+              <div>
+                <strong>Descrição a gravar:</strong>{' '}
+                <span className="italic">
+                  {freeTextDescription ? `"${freeTextDescription.slice(0, 80)}..."` : '(vazia)'}
+                </span>
+              </div>
+              <div>
+                <strong>Conclusão a gravar:</strong>{' '}
+                <span className="italic">
+                  {freeTextConclusion ? `"${freeTextConclusion.slice(0, 80)}..."` : '(vazia)'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isSavingPersonalTemplate}
+              onClick={() => setIsNewPersonalTemplateOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              disabled={isSavingPersonalTemplate}
+              onClick={handleSaveAsPersonalTemplate}
+              className="bg-[#4A90D9] hover:bg-[#3b7dc2] text-white text-xs font-semibold"
+            >
+              {isSavingPersonalTemplate ? 'Salvando...' : 'Salvar Modelo'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL 0B: CONFIRMAÇÃO DE SÍNTESE DE TEXTO A PARTIR DO ESTRUTURADO */}
+      <Dialog open={isGenerateConfirmOpen} onOpenChange={setIsGenerateConfirmOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-sm font-bold flex items-center gap-1.5 text-[#2F3942]">
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+              <span>Confirmar Substituição da Redação Atual</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#6F7780]">
+              Você já possui texto redigido na descrição ou conclusão. Deseja substituí-lo pela
+              proposta gerada a partir dos campos estruturados?
+            </DialogDescription>
+          </DialogHeader>
+
+          {generatedProposalCandidate && (
+            <div className="space-y-2 py-2 text-xs">
+              <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+                <span className="font-semibold text-slate-800 text-[11px]">
+                  Proposta de Descrição:
+                </span>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  {generatedProposalCandidate.description}
+                </p>
+              </div>
+              <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+                <span className="font-semibold text-slate-800 text-[11px]">
+                  Proposta de Conclusão:
+                </span>
+                <p className="text-[11px] text-slate-600 font-medium">
+                  {generatedProposalCandidate.conclusion}
+                </p>
+              </div>
+              <p className="text-[10px] text-[#6F7780] italic">
+                A proposta permanecerá 100% editável após ser inserida.
+              </p>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setIsGenerateConfirmOpen(false)}>
+              Manter meu texto atual
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleConfirmApplyGeneratedProposal}
+              className="bg-[#2F3942] hover:bg-[#1f262c] text-white text-xs font-semibold"
+            >
+              Sim, substituir pela proposta
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* MODAL 1: HISTÓRICO DE VERSÕES DO RASCUNHO */}
       <Dialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>

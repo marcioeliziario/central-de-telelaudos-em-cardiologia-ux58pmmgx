@@ -218,6 +218,106 @@ export const templateService = {
   },
 }
 
+export const personalTemplateService = {
+  async getForUser(userId: string): Promise<any[]> {
+    try {
+      return await pb.collection('personal_report_templates').getFullList({
+        filter: `user_id = '${userId}' && is_active = true`,
+        sort: 'category,title',
+      })
+    } catch {
+      return []
+    }
+  },
+
+  async create(data: {
+    user_id: string
+    doctor_id?: string
+    title: string
+    category: string
+    description: string
+    conclusion: string
+  }): Promise<any> {
+    return await pb.collection('personal_report_templates').create({
+      ...data,
+      is_active: true,
+    })
+  },
+
+  async update(
+    id: string,
+    data: Partial<{
+      title: string
+      category: string
+      description: string
+      conclusion: string
+      is_active: boolean
+    }>,
+  ): Promise<any> {
+    return await pb.collection('personal_report_templates').update(id, data)
+  },
+
+  async remove(id: string): Promise<boolean> {
+    try {
+      await pb.collection('personal_report_templates').delete(id)
+      return true
+    } catch {
+      return false
+    }
+  },
+}
+
+export const doctorPreferenceService = {
+  async getForUser(userId: string): Promise<{
+    default_report_mode: 'structured' | 'free_text'
+    auto_generate_proposal_enabled?: boolean
+    id?: string
+  } | null> {
+    try {
+      const records = await pb.collection('doctor_preferences').getList(1, 1, {
+        filter: `user_id = '${userId}'`,
+      })
+      if (records.items.length > 0) {
+        const item: any = records.items[0]
+        return {
+          id: item.id,
+          default_report_mode: item.default_report_mode || 'structured',
+          auto_generate_proposal_enabled: Boolean(item.auto_generate_proposal_enabled),
+        }
+      }
+      return null
+    } catch {
+      return null
+    }
+  },
+
+  async savePreference(
+    userId: string,
+    mode: 'structured' | 'free_text',
+    doctorId?: string,
+  ): Promise<any> {
+    try {
+      const existing = await this.getForUser(userId)
+      if (existing && existing.id) {
+        return await pb.collection('doctor_preferences').update(existing.id, {
+          default_report_mode: mode,
+          ...(doctorId ? { doctor_id: doctorId } : {}),
+        })
+      } else {
+        return await pb.collection('doctor_preferences').create({
+          user_id: userId,
+          doctor_id: doctorId || null,
+          default_report_mode: mode,
+          auto_generate_proposal_enabled: false,
+        })
+      }
+    } catch (err) {
+      console.error('Erro ao persistir preferência do médico:', err)
+      throw err
+    }
+  },
+}
+
 export const draftService = {
   async getLatestForExam(examId: string): Promise<any | null> {
     try {

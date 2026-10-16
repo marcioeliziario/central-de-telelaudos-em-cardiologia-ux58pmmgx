@@ -46,10 +46,12 @@ import {
   Stethoscope,
   ChevronRight,
   Filter,
+  Sparkles,
 } from 'lucide-react'
 import EcgViewer from '@/components/EcgViewer'
 import ReportEditor from '@/components/ReportEditor'
 import SecurityTestRunnerModal from '@/components/SecurityTestRunnerModal'
+import FlexibleEditorTestRunnerModal from '@/components/FlexibleEditorTestRunnerModal'
 import { MfaSecurityCard } from '@/components/MfaSecurityCard'
 import { DoctorSignatureCard } from '@/components/DoctorSignatureCard'
 import NotificationsPopover from '@/components/NotificationsPopover'
@@ -106,6 +108,7 @@ export function CardiologistDashboard() {
 
   // Modal de Testes de Segurança Automatizados
   const [isSecurityTestsOpen, setIsSecurityTestsOpen] = useState<boolean>(false)
+  const [isFlexibleEditorTestsOpen, setIsFlexibleEditorTestsOpen] = useState<boolean>(false)
 
   // Carregar dados iniciais
   const loadInitialData = async () => {
@@ -478,6 +481,17 @@ export function CardiologistDashboard() {
               className={`w-3.5 h-3.5 text-[#6F7780] ${isLoading ? 'animate-spin' : ''}`}
             />
             <span>Atualizar Fila</span>
+          </Button>
+
+          <Button
+            size="sm"
+            onClick={() => setIsFlexibleEditorTestsOpen(true)}
+            variant="outline"
+            className="border-emerald-300 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 text-xs gap-1.5 h-8 font-semibold"
+            title="Executar os 10 testes do Editor Flexível de Laudos"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Testes Editor Flexível</span>
           </Button>
 
           <Button
@@ -1187,6 +1201,11 @@ export function CardiologistDashboard() {
       <SecurityTestRunnerModal
         isOpen={isSecurityTestsOpen}
         onClose={() => setIsSecurityTestsOpen(false)}
+      />
+
+      <FlexibleEditorTestRunnerModal
+        isOpen={isFlexibleEditorTestsOpen}
+        onClose={() => setIsFlexibleEditorTestsOpen(false)}
       />
 
       {/* Modal Bird ID Pro */}

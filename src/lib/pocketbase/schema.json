@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T13:25:37.072Z",
+  "generatedAt": "2026-10-16T13:35:44.808Z",
   "collections": [
     {
       "name": "users",
@@ -998,6 +998,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "report_mode",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["structured", "free_text"]
         }
       ],
       "indexes": [
@@ -1161,6 +1168,13 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "report_mode",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["structured", "free_text"]
         }
       ],
       "indexes": [
@@ -2940,6 +2954,136 @@
         "CREATE INDEX idx_sign_sess_user ON signing_sessions (user_id)",
         "CREATE INDEX idx_sign_sess_state ON signing_sessions (state_hash)",
         "CREATE INDEX idx_sign_sess_status ON signing_sessions (status)"
+      ]
+    },
+    {
+      "name": "doctor_preferences",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && user_id = @request.auth.id",
+        "create": "@request.auth.id != '' && @request.body.user_id = @request.auth.id",
+        "update": "@request.auth.id != '' && user_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && user_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "doctor_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "doctors"
+        },
+        {
+          "name": "default_report_mode",
+          "type": "select",
+          "required": true,
+          "system": false,
+          "selectValues": ["structured", "free_text"]
+        },
+        {
+          "name": "auto_generate_proposal_enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_doc_prefs_user ON doctor_preferences (user_id)"]
+    },
+    {
+      "name": "personal_report_templates",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && user_id = @request.auth.id",
+        "create": "@request.auth.id != '' && @request.body.user_id = @request.auth.id",
+        "update": "@request.auth.id != '' && user_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && user_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "doctor_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "doctors"
+        },
+        {
+          "name": "title",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "category",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "conclusion",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_personal_tpl_user ON personal_report_templates (user_id)",
+        "CREATE INDEX idx_personal_tpl_title ON personal_report_templates (title)"
       ]
     }
   ]

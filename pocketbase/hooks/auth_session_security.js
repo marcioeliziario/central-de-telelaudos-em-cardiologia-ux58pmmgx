@@ -990,47 +990,6 @@ routerAdd('POST', '/backend/v1/doctor/signature/sync-initial', (e) => {
       throw new Error('Mecanismo $filesystem.fileFromBytes indisponível no ambiente Skip Cloud.')
     }
 
-    const decodeBase64Inline = (base64Input) => {
-      if (!base64Input) return []
-      let b64 = String(base64Input).trim()
-      const commaIdx = b64.indexOf(',')
-      if (commaIdx !== -1) b64 = b64.substring(commaIdx + 1).trim()
-      try {
-        if (typeof $security !== 'undefined' && typeof $security.base64Decode === 'function') {
-          const decoded = $security.base64Decode(b64)
-          if (Array.isArray(decoded)) return decoded
-          if (typeof decoded === 'string' && decoded.length > 0) {
-            const out = []
-            for (let i = 0; i < decoded.length; i++) out.push(decoded.charCodeAt(i) & 0xff)
-            return out
-          }
-        }
-      } catch (_) {}
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
-      let clean = b64.replace(/[\r\n\s=]/g, '')
-      while (clean.length % 4 !== 0) clean += 'A'
-      const outBytes = []
-      for (let i = 0; i < clean.length; i += 4) {
-        const enc1 = chars.indexOf(clean.charAt(i))
-        const enc2 = chars.indexOf(clean.charAt(i + 1))
-        const enc3 = chars.indexOf(clean.charAt(i + 2))
-        const enc4 = chars.indexOf(clean.charAt(i + 3))
-        if (enc1 === -1 || enc2 === -1 || enc3 === -1 || enc4 === -1) continue
-        const bits24 = (enc1 << 18) | (enc2 << 12) | (enc3 << 6) | enc4
-        outBytes.push((bits24 >> 16) & 0xff)
-        outBytes.push((bits24 >> 8) & 0xff)
-        outBytes.push(bits24 & 0xff)
-      }
-      const rawClean = b64.replace(/[\r\n\s]/g, '')
-      let paddingCount = 0
-      if (rawClean.endsWith('==')) paddingCount = 2
-      else if (rawClean.endsWith('=')) paddingCount = 1
-      if (paddingCount > 0 && outBytes.length >= paddingCount) {
-        outBytes.splice(outBytes.length - paddingCount, paddingCount)
-      }
-      return outBytes
-    }
-
     const byteSlice = decodeBase64Inline(imageDataUri)
     if (!byteSlice || byteSlice.length === 0) {
       throw new BadRequestError('Falha ao decodificar imagem Base64 da assinatura médica.')
@@ -1202,9 +1161,54 @@ routerAdd('POST', '/backend/v1/doctor/signature/save', (e) => {
   }
 
   // 2. Calcular hash SHA-256 da imagem para integridade estrita
+  const decodeBase64Inline = (base64Input) => {
+    if (!base64Input) return []
+    let b64 = String(base64Input).trim()
+    const commaIdx = b64.indexOf(',')
+    if (commaIdx !== -1) b64 = b64.substring(commaIdx + 1).trim()
+    try {
+      if (typeof $security !== 'undefined' && typeof $security.base64Decode === 'function') {
+        const decoded = $security.base64Decode(b64)
+        if (Array.isArray(decoded)) return decoded
+        if (typeof decoded === 'string' && decoded.length > 0) {
+          const out = []
+          for (let i = 0; i < decoded.length; i++) out.push(decoded.charCodeAt(i) & 0xff)
+          return out
+        }
+      }
+    } catch (_) {}
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    let clean = b64.replace(/[\r\n\s=]/g, '')
+    while (clean.length % 4 !== 0) clean += 'A'
+    const outBytes = []
+    for (let i = 0; i < clean.length; i += 4) {
+      const enc1 = chars.indexOf(clean.charAt(i))
+      const enc2 = chars.indexOf(clean.charAt(i + 1))
+      const enc3 = chars.indexOf(clean.charAt(i + 2))
+      const enc4 = chars.indexOf(clean.charAt(i + 3))
+      if (enc1 === -1 || enc2 === -1 || enc3 === -1 || enc4 === -1) continue
+      const bits24 = (enc1 << 18) | (enc2 << 12) | (enc3 << 6) | enc4
+      outBytes.push((bits24 >> 16) & 0xff)
+      outBytes.push((bits24 >> 8) & 0xff)
+      outBytes.push(bits24 & 0xff)
+    }
+    const rawClean = b64.replace(/[\r\n\s]/g, '')
+    let paddingCount = 0
+    if (rawClean.endsWith('==')) paddingCount = 2
+    else if (rawClean.endsWith('=')) paddingCount = 1
+    if (paddingCount > 0 && outBytes.length >= paddingCount) {
+      outBytes.splice(outBytes.length - paddingCount, paddingCount)
+    }
+    return outBytes
+  }
+
+  const byteSlicePre = decodeBase64Inline(imageDataUri)
+  if (!byteSlicePre || byteSlicePre.length === 0) {
+    throw new BadRequestError('Falha ao decodificar imagem Base64 da assinatura médica.')
+  }
+
   const fileHash = $security.sha256(imageDataUri)
   const nowIso = new Date().toISOString()
-
   let savedRecord = null
   let isSubstitution = false
 

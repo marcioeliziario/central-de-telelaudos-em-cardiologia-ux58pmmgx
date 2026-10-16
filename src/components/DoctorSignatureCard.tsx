@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { doctorSignatureService, DoctorSignatureResponse } from '@/services/doctorSignatureService'
 import { useAuth } from '@/contexts/AuthContext'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 export function DoctorSignatureCard() {
   const { user } = useAuth()
@@ -129,7 +130,9 @@ export function DoctorSignatureCard() {
       await fetchSignature()
     } catch (err: any) {
       console.error('Erro ao salvar assinatura:', err)
-      alert(err.message || 'Falha ao salvar assinatura. Verifique sua senha e código TOTP.')
+      const message = getErrorMessage(err)
+      setErrorMsg(message)
+      alert(message || 'Falha ao salvar assinatura. Verifique sua senha e código TOTP.')
     } finally {
       setIsSubmitting(false)
     }
@@ -157,7 +160,9 @@ export function DoctorSignatureCard() {
       await fetchSignature()
     } catch (err: any) {
       console.error('Erro ao remover assinatura:', err)
-      alert(err.message || 'Falha ao remover assinatura. Verifique sua senha e código TOTP.')
+      const message = getErrorMessage(err)
+      setErrorMsg(message)
+      alert(message || 'Falha ao remover assinatura. Verifique sua senha e código TOTP.')
     } finally {
       setIsSubmitting(false)
     }

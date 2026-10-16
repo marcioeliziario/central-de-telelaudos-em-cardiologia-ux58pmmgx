@@ -308,7 +308,7 @@ export const MfaSecurityCard: React.FC = () => {
             <div className="space-y-1 text-slate-600">
               <div className="flex justify-between">
                 <span>Duração do authToken:</span>
-                <span className="font-mono text-slate-900">7 dias (604.800s)</span>
+                <span className="font-mono text-slate-900">12 horas (43.200s)</span>
               </div>
               <div className="flex justify-between">
                 <span>Invalidação Imediata:</span>

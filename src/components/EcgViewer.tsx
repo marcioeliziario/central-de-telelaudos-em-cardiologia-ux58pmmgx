@@ -249,13 +249,22 @@ export default function EcgViewer({
                   }}
                 >
                   <div className="text-center p-4 bg-white/95 rounded-lg border border-[#E3E6E8] text-[#2F3942] shadow-xs max-w-sm">
-                    <Info className="w-5 h-5 text-[#4A90D9] mx-auto mb-1.5" />
-                    <div className="font-bold text-xs">Exame Cadastrado na Fila</div>
-                    <div className="text-[11px] text-[#6F7780] mt-1 font-mono">
-                      Arquivo: {exam.exam_file}
+                    <Info className="w-5 h-5 text-amber-600 mx-auto mb-1.5" />
+                    <div className="font-bold text-xs text-[#2F3942]">
+                      Arquivo de ECG Não Anexado
                     </div>
-                    <div className="text-[10px] text-[#6F7780] mt-2">
-                      Visualização preservada do exame original sem qualquer alteração.
+                    <div className="text-[11px] text-[#6F7780] mt-1">
+                      {exam.exam_file ? (
+                        <>Arquivo referenciado ({exam.exam_file}) não localizado no servidor.</>
+                      ) : (
+                        <>
+                          Nenhum arquivo de imagem ou PDF foi anexado a esta solicitação cadastrada.
+                        </>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-[#6F7780] mt-2 bg-[#F7F6F4] p-2 rounded border border-[#E3E6E8]">
+                      Para emitir o laudo com segurança diagnóstica, devolva o exame à clínica
+                      solicitante solicitando o reenvio do traçado legível.
                     </div>
                   </div>
                 </div>
@@ -322,7 +331,12 @@ export default function EcgViewer({
         </div>
 
         <div className="flex items-center gap-2 text-[#6F7780]">
-          <span>Velocidade: 25 mm/s • Ganho: N (10 mm/mV)</span>
+          <span>
+            {exam.calibration_speed
+              ? `Velocidade: ${exam.calibration_speed}`
+              : 'Velocidade: não informada'}{' '}
+            • {exam.calibration_gain ? `Ganho: ${exam.calibration_gain}` : 'Ganho: não informado'}
+          </span>
           {isMagnifierActive && (
             <span className="text-[#4A90D9] font-medium">• Lupa ativa (2.5x)</span>
           )}

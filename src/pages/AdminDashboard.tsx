@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { APP_CONFIG } from '@/config/appConfig'
 import {
   organizationService,
   unitService,
@@ -203,7 +204,7 @@ export default function AdminDashboard() {
             variant="outline"
             className="bg-emerald-50 text-emerald-900 border-emerald-300 py-1 text-xs font-mono"
           >
-            v0.0.15 — Etapa 9A: Autenticação Multifator & Sessões
+            {APP_CONFIG.versionLabel} — Painel Administrativo
           </Badge>
         </div>
       </div>

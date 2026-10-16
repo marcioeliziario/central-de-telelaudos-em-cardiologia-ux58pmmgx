@@ -413,7 +413,7 @@ export default function LoginPage() {
                       Cardiologista
                     </span>
                   </div>
-                  <div className="text-[#6F7780] text-[11px]">CRM 145892-SP • RQE 68492</div>
+                  <div className="text-[#6F7780] text-[11px]">CRM 145892/SP • RQE 68492</div>
                 </div>
                 <ArrowRight className="w-4 h-4 text-[#6F7780] group-hover:text-[#4A90D9] group-hover:translate-x-0.5 transition-transform" />
               </button>

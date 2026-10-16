@@ -605,9 +605,14 @@ export default function ReportEditor({
             <span className="text-[10px] text-[#6F7780]">Preenchimento médico manual</span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <div>
-              <Label className="text-[11px] font-semibold text-[#2F3942]">FC (bpm)</Label>
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+            <div className="min-w-0">
+              <Label
+                className="text-[11px] font-semibold text-[#2F3942] block truncate"
+                title="Frequência Cardíaca em bpm"
+              >
+                FC (bpm)
+              </Label>
               <Input
                 type="number"
                 placeholder="Ex: 72"
@@ -616,17 +621,27 @@ export default function ReportEditor({
                 className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
-            <div>
-              <Label className="text-[11px] font-semibold text-[#2F3942]">Eixo QRS (°)</Label>
+            <div className="min-w-0">
+              <Label
+                className="text-[11px] font-semibold text-[#2F3942] block truncate"
+                title="Eixo Elétrico do QRS"
+              >
+                Eixo QRS (°)
+              </Label>
               <Input
-                placeholder="Ex: +45° ou normal"
+                placeholder="Ex: +45°"
                 value={electricalAxis}
                 onChange={(e) => setElectricalAxis(e.target.value)}
                 className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
-            <div>
-              <Label className="text-[11px] font-semibold text-[#2F3942]">Intervalo PR (ms)</Label>
+            <div className="min-w-0">
+              <Label
+                className="text-[11px] font-semibold text-[#2F3942] block truncate"
+                title="Intervalo PR em milissegundos"
+              >
+                Intervalo PR (ms)
+              </Label>
               <Input
                 type="number"
                 placeholder="Ex: 160"
@@ -635,8 +650,13 @@ export default function ReportEditor({
                 className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
-            <div>
-              <Label className="text-[11px] font-semibold text-[#2F3942]">Duração QRS (ms)</Label>
+            <div className="min-w-0">
+              <Label
+                className="text-[11px] font-semibold text-[#2F3942] block truncate"
+                title="Duração do QRS em milissegundos"
+              >
+                Duração QRS (ms)
+              </Label>
               <Input
                 type="number"
                 placeholder="Ex: 88"
@@ -645,8 +665,13 @@ export default function ReportEditor({
                 className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
-            <div>
-              <Label className="text-[11px] font-semibold text-[#2F3942]">Intervalo QT (ms)</Label>
+            <div className="min-w-0">
+              <Label
+                className="text-[11px] font-semibold text-[#2F3942] block truncate"
+                title="Intervalo QT em milissegundos"
+              >
+                Intervalo QT (ms)
+              </Label>
               <Input
                 type="number"
                 placeholder="Ex: 380"
@@ -655,8 +680,13 @@ export default function ReportEditor({
                 className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
-            <div>
-              <Label className="text-[11px] font-semibold text-[#2F3942]">QTc Bazett (ms)</Label>
+            <div className="min-w-0">
+              <Label
+                className="text-[11px] font-semibold text-[#2F3942] block truncate"
+                title="QT Corrigido por Bazett em milissegundos"
+              >
+                QTc Bazett (ms)
+              </Label>
               <Input
                 type="number"
                 placeholder="Ex: 410"
@@ -758,30 +788,38 @@ export default function ReportEditor({
         </div>
 
         {/* Bloco 4: Descrição e Conclusão em Texto Livre (Obrigatórias) */}
-        <div className="space-y-3 pt-2 border-t border-[#E3E6E8]">
+        <div className="space-y-3.5 pt-2 border-t border-[#E3E6E8]">
           <div>
-            <Label className="text-xs font-bold text-[#2F3942]">
-              Descrição Eletrocardiográfica Detalhada (Texto Livre) *
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold text-[#2F3942]">
+                Descrição Eletrocardiográfica Detalhada (Texto Livre) *
+              </Label>
+              <span className="text-[10px] text-[#6F7780]">
+                Área expandida para redação minuciosa
+              </span>
+            </div>
             <Textarea
-              rows={3}
+              rows={5}
               value={freeTextDescription}
               onChange={(e) => setFreeTextDescription(e.target.value)}
               placeholder="Descreva detalhadamente os achados do traçado eletrocardiográfico..."
-              className="text-xs mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
+              className="text-xs mt-1.5 border-[#E3E6E8] focus:border-[#4A90D9] leading-relaxed resize-y min-h-[90px]"
             />
           </div>
 
           <div>
-            <Label className="text-xs font-bold text-[#2F3942]">
-              Conclusão Eletrocardiográfica Diagnóstica (Texto Livre) *
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold text-[#2F3942]">
+                Conclusão Eletrocardiográfica Diagnóstica (Texto Livre) *
+              </Label>
+              <span className="text-[10px] text-[#6F7780]">Síntese diagnóstica final</span>
+            </div>
             <Textarea
-              rows={2}
+              rows={3}
               value={freeTextConclusion}
               onChange={(e) => setFreeTextConclusion(e.target.value)}
               placeholder="Ex: Eletrocardiograma dentro dos limites da normalidade."
-              className="text-xs mt-1 font-semibold text-[#2F3942] border-[#E3E6E8] focus:border-[#4A90D9]"
+              className="text-xs mt-1.5 font-semibold text-[#2F3942] border-[#E3E6E8] focus:border-[#4A90D9] leading-relaxed resize-y min-h-[70px]"
             />
           </div>
         </div>
@@ -838,8 +876,8 @@ export default function ReportEditor({
                 Documento Médico (PDF) & Assinatura Digital
               </span>
               <p className="text-[11px] text-[#6F7780]">
-                Conferência do documento, preparação para assinatura PAdES ICP-Brasil e consulta de
-                versões
+                Sequência clínica estrita: 1. Rascunho → 2. Concluir Conteúdo → 3. Assinatura
+                Digital ICP-Brasil → 4. Liberação
               </p>
             </div>
           </div>

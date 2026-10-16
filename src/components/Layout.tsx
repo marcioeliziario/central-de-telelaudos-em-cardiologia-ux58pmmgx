@@ -21,14 +21,55 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { BrandLogo } from '@/components/BrandLogo'
+import { APP_CONFIG } from '@/config/appConfig'
+import { PenTool, Settings, Inbox, Clock } from 'lucide-react'
 
 export default function Layout() {
   const { user, isAuthenticated, currentOrg, currentRole, logout, userOrgs, switchOrg } = useAuth()
   const location = useLocation()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
-  // Itens de navegação da interface médica
-  const navItems = [
+  const isCardiologist = currentRole === 'cardiologist'
+  const isAdmin = currentRole === 'admin'
+
+  // Itens clínicos estritos para o perfil de cardiologista
+  // (Requisito 1: Painel e fila, Laudos em elaboração, Documentos aguardando assinatura, Minha assinatura e meu certificado, Configurações de conta)
+  const clinicalNavItems = [
+    {
+      to: '/',
+      label: 'Painel e Fila de Exames',
+      icon: LayoutDashboard,
+      active:
+        location.pathname === '/' && (!location.search || location.search.includes('tab=queue')),
+    },
+    {
+      to: '/?tab=in_analysis',
+      label: 'Laudos em Elaboração',
+      icon: Clock,
+      active: location.pathname === '/' && location.search.includes('tab=in_analysis'),
+    },
+    {
+      to: '/?tab=waiting_signature',
+      label: 'Aguardando Assinatura',
+      icon: FileCheck,
+      active: location.pathname === '/' && location.search.includes('tab=waiting_signature'),
+    },
+    {
+      to: '/?tab=my_signature',
+      label: 'Minha Assinatura e Certificado',
+      icon: PenTool,
+      active: location.pathname === '/' && location.search.includes('tab=my_signature'),
+    },
+    {
+      to: '/?tab=account_settings',
+      label: 'Configurações de Conta',
+      icon: Settings,
+      active: location.pathname === '/' && location.search.includes('tab=account_settings'),
+    },
+  ]
+
+  // Itens gerais/administrativos
+  const adminNavItems = [
     {
       to: '/',
       label: 'Painel Central',
@@ -67,6 +108,9 @@ export default function Layout() {
       active: location.pathname === '/admin/backup-continuidade',
     },
   ]
+
+  // Menu visível conforme permissões do papel
+  const navItems = isCardiologist ? clinicalNavItems : adminNavItems
 
   const getRoleLabel = (role: string | null) => {
     switch (role) {
@@ -171,7 +215,7 @@ export default function Layout() {
         <aside className="hidden lg:block w-64 shrink-0 space-y-4">
           <div className="bg-white rounded-xl border border-[#E3E6E8] p-3 shadow-[0_1px_3px_rgba(47,57,66,0.03)]">
             <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#6F7780]">
-              Módulos do Sistema
+              {isCardiologist ? 'Operação Clínica' : 'Módulos do Sistema'}
             </div>
             <nav className="space-y-1">
               {navItems.map((item) => {
@@ -203,15 +247,17 @@ export default function Layout() {
           <div className="bg-white rounded-xl border border-[#E3E6E8] p-4 text-xs text-[#6F7780] space-y-2.5 shadow-[0_1px_3px_rgba(47,57,66,0.03)]">
             <div className="flex items-center gap-2 text-[#2F3942] font-bold text-xs">
               <ShieldCheck className="w-4 h-4 text-[#4A90D9]" />
-              <span>Conformidade Médica</span>
+              <span>Padrões e Diretrizes</span>
             </div>
             <p className="text-[11px] leading-relaxed">
-              Diretriz SBC 2022 • Trilha de Auditoria com Hash SHA-256 • Resolução CFM nº 2.314/2022
-              • Padrão PAdES ICP-Brasil
+              Diretriz SBC 2022 • Trilha de Auditoria SHA-256 • Resolução CFM nº 2.314/2022 • Sessão
+              de 12h
             </p>
             <div className="pt-2 border-t border-[#E3E6E8] text-[10px] text-[#6F7780] flex items-center justify-between">
-              <span>Versão Homologada</span>
-              <span className="font-mono font-semibold text-[#2F3942]">v0.0.19</span>
+              <span>Versão da Central</span>
+              <span className="font-mono font-semibold text-[#2F3942]">
+                {APP_CONFIG.versionLabel}
+              </span>
             </div>
           </div>
         </aside>
@@ -281,39 +327,40 @@ export default function Layout() {
               <span>Márcio Eliziário — Clínica Médica e Cardiologia</span>
             </div>
             <p className="text-[#A2ABB3] text-xs max-w-2xl leading-relaxed">
-              Central de Telelaudos em Eletrocardiografia Conforme Diretrizes da SBC e do CFM.
-              Imutabilidade documental com SHA-256, segurança em repouso AES-256, auditoria e
-              conformidade com a LGPD.
+              Central de Telelaudos em Eletrocardiografia alinhada às Diretrizes da SBC e do CFM.
+              Imutabilidade documental com SHA-256, segurança em repouso AES-256 e auditoria
+              contínua de acessos.
             </p>
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-4 text-xs text-[#A2ABB3] shrink-0">
-            <div className="flex items-center gap-2">
-              <Link
-                to="/admin/teste-assinatura"
-                className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs font-semibold"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-[#4A90D9]" />
-                <span>ICP-Brasil</span>
-              </Link>
-              <Link
-                to="/homologacao"
-                className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs"
-              >
-                <FileText className="w-3.5 h-3.5 text-slate-300" />
-                <span>Homologação 4B</span>
-              </Link>
-              <Link
-                to="/admin/auditoria-infra"
-                className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs"
-              >
-                <Server className="w-3.5 h-3.5 text-slate-300" />
-                <span>Infraestrutura</span>
-              </Link>
-            </div>
-            <div className="flex items-center gap-1.5 text-emerald-400 font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Ambiente Homologado</span>
+            {isAdmin && (
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/admin/teste-assinatura"
+                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs font-semibold"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#4A90D9]" />
+                  <span>ICP-Brasil</span>
+                </Link>
+                <Link
+                  to="/homologacao"
+                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs"
+                >
+                  <FileText className="w-3.5 h-3.5 text-slate-300" />
+                  <span>Homologação</span>
+                </Link>
+                <Link
+                  to="/admin/auditoria-infra"
+                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs"
+                >
+                  <Server className="w-3.5 h-3.5 text-slate-300" />
+                  <span>Infraestrutura</span>
+                </Link>
+              </div>
+            )}
+            <div className="flex items-center gap-1.5 text-[#A2ABB3] font-mono text-[11px]">
+              <span>Central {APP_CONFIG.versionLabel}</span>
             </div>
           </div>
         </div>

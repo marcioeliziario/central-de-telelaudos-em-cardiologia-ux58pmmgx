@@ -148,16 +148,16 @@ export function MultiProviderSigningCard() {
   }
 
   return (
-    <Card className="border-teal-200 bg-teal-50/20 shadow-sm">
-      <CardHeader className="pb-3 border-b border-teal-100 flex flex-row items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Shield className="w-5 h-5 text-teal-700" />
-          <CardTitle className="text-base font-semibold text-teal-950">
-            Assinatura Digital Multiprovedor (Etapa E1 — Homologação)
+    <Card className="border-[#E3E6E8] bg-white text-[#2F3942] shadow-[0_1px_3px_rgba(47,57,66,0.03)] rounded-xl overflow-hidden">
+      <CardHeader className="pb-3.5 px-5 border-b border-[#E3E6E8] bg-[#F7F6F4]/50 flex flex-row items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <Shield className="w-5 h-5 text-[#4A90D9]" />
+          <CardTitle className="text-sm font-bold text-[#2F3942]">
+            Assinatura Digital Multiprovedor (ICP-Brasil)
           </CardTitle>
           <Badge
             variant="outline"
-            className="border-teal-400 text-teal-800 bg-teal-100/50 text-[11px]"
+            className="border-[#4A90D9]/30 text-[#4A90D9] bg-[#4A90D9]/10 text-[10px] font-medium"
           >
             Arquitetura Adapter
           </Badge>
@@ -167,9 +167,9 @@ export function MultiProviderSigningCard() {
           size="sm"
           onClick={loadProvidersAndSession}
           disabled={isLoading}
-          className="text-teal-700 hover:text-teal-900"
+          className="text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4] text-xs h-8"
         >
-          <RefreshCw className={`w-4 h-4 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
           Atualizar
         </Button>
       </CardHeader>
@@ -339,16 +339,16 @@ export function MultiProviderSigningCard() {
             size="sm"
             onClick={handleStartAuthorization}
             disabled={isInitializing || isSimulatedAuthRunning}
-            className="bg-teal-700 hover:bg-teal-800 text-white shrink-0"
+            className="bg-[#4A90D9] hover:bg-[#3b7dc2] text-white font-semibold text-xs h-8 shadow-xs shrink-0"
           >
             {isInitializing || isSimulatedAuthRunning ? (
               <>
-                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                 Autorizando Sessão...
               </>
             ) : (
               <>
-                <ExternalLink className="w-4 h-4 mr-2" />
+                <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
                 Autorizar Sessão no Provedor
               </>
             )}

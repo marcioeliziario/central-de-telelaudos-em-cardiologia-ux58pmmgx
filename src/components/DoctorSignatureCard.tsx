@@ -169,25 +169,25 @@ export function DoctorSignatureCard() {
   }
 
   return (
-    <Card className="border-slate-200 bg-white shadow-sm overflow-hidden">
-      <CardHeader className="bg-slate-50/70 border-b border-slate-100 pb-3">
+    <Card className="border-[#E3E6E8] bg-white text-[#2F3942] shadow-[0_1px_3px_rgba(47,57,66,0.03)] rounded-xl overflow-hidden">
+      <CardHeader className="bg-[#F7F6F4]/50 border-b border-[#E3E6E8] pb-3.5 px-5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-lg bg-sky-100 text-[#0E4C92]">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-[#4A90D9]/10 text-[#4A90D9]">
               <PenTool className="w-5 h-5" />
             </div>
             <div>
-              <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <CardTitle className="text-sm font-bold text-[#2F3942] flex items-center gap-2">
                 <span>Minha Assinatura Manuscrita</span>
                 {signatureData?.isActive && (
-                  <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 text-[10px] border-emerald-300">
+                  <Badge className="bg-emerald-50 text-emerald-800 hover:bg-emerald-50 text-[10px] border-emerald-300 font-medium">
                     Ativa
                   </Badge>
                 )}
               </CardTitle>
-              <CardDescription className="text-xs text-slate-500">
-                Imagem escaneada incorporada exclusivamente na aprovação definitiva de laudos
-                médicos
+              <CardDescription className="text-xs text-[#6F7780] mt-0.5">
+                Imagem escaneada incorporada na estampa médica da emissão de laudos (CFM nº
+                2.314/2022)
               </CardDescription>
             </div>
           </div>
@@ -243,7 +243,7 @@ export function DoctorSignatureCard() {
                   setReauthTotp('')
                   setIsUploadModalOpen(true)
                 }}
-                className="h-8 text-xs gap-1.5 bg-[#0E4C92] hover:bg-[#0c3e77] text-white"
+                className="h-8 text-xs gap-1.5 bg-[#4A90D9] hover:bg-[#3b7dc2] text-white font-semibold shadow-xs"
               >
                 <Upload className="w-3.5 h-3.5" />
                 <span>Cadastrar Assinatura</span>

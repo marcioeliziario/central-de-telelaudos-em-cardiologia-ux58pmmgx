@@ -496,16 +496,16 @@ export default function ReportEditor({
   return (
     <div className="space-y-4">
       {/* Topo do Editor de Laudos: Status de Salvamento e Biblioteca de Modelos */}
-      <Card className="border-slate-200 bg-white shadow-sm">
-        <div className="p-3.5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <FileCheck className="w-4 h-4 text-[#0E4C92]" />
+      <Card className="border-[#E3E6E8] bg-white shadow-[0_1px_3px_rgba(47,57,66,0.03)] rounded-xl overflow-hidden">
+        <div className="p-3.5 flex flex-wrap items-center justify-between gap-3 border-b border-[#E3E6E8] bg-[#F7F6F4]/50">
+          <div className="flex items-center gap-2.5">
+            <FileCheck className="w-4 h-4 text-[#4A90D9]" />
             <div>
-              <h3 className="text-xs font-bold text-slate-900">
+              <h3 className="text-xs font-bold text-[#2F3942]">
                 Editor de Laudos Eletrocardiográficos
               </h3>
-              <p className="text-[11px] text-slate-500">
-                Referência: Diretriz SBC 2022 • Laudo Estruturado e Conclusivo
+              <p className="text-[11px] text-[#6F7780]">
+                Diretriz SBC 2022 • Laudo Estruturado e Conclusivo
               </p>
             </div>
           </div>
@@ -515,7 +515,7 @@ export default function ReportEditor({
             {saveStatus === 'saving' && (
               <Badge
                 variant="outline"
-                className="text-[11px] bg-sky-50 text-sky-800 border-sky-300 gap-1"
+                className="text-[11px] bg-[#4A90D9]/10 text-[#4A90D9] border-[#4A90D9]/30 gap-1"
               >
                 <Loader2 className="w-3 h-3 animate-spin" />
                 <span>Salvando rascunho...</span>
@@ -524,7 +524,7 @@ export default function ReportEditor({
             {saveStatus === 'saved' && (
               <Badge
                 variant="outline"
-                className="text-[11px] bg-emerald-50 text-emerald-800 border-emerald-300 gap-1"
+                className="text-[11px] bg-emerald-50 text-emerald-800 border-emerald-300 gap-1 font-medium"
               >
                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                 <span>Salvo {lastSavedTime ? `às ${lastSavedTime}` : ''}</span>
@@ -533,7 +533,7 @@ export default function ReportEditor({
             {saveStatus === 'error' && (
               <Badge
                 variant="outline"
-                className="text-[11px] bg-red-50 text-red-800 border-red-300 gap-1"
+                className="text-[11px] bg-red-50 text-red-800 border-red-300 gap-1 font-medium"
               >
                 <AlertTriangle className="w-3 h-3 text-red-600" />
                 <span>Falha no salvamento</span>
@@ -544,33 +544,33 @@ export default function ReportEditor({
               size="sm"
               variant="outline"
               onClick={performSaveDraft}
-              className="h-7 text-xs gap-1 border-slate-300"
+              className="h-8 text-xs gap-1.5 border-[#E3E6E8] text-[#2F3942] hover:bg-[#F7F6F4] font-medium"
               title="Salvar rascunho agora"
             >
-              <Save className="w-3 h-3" />
-              <span>Salvar</span>
+              <Save className="w-3.5 h-3.5 text-[#6F7780]" />
+              <span>Salvar Rascunho</span>
             </Button>
 
             <Button
               size="sm"
               variant="outline"
               onClick={() => setIsHistoryModalOpen(true)}
-              className="h-7 text-xs gap-1 border-slate-300"
+              className="h-8 text-xs gap-1.5 border-[#E3E6E8] text-[#2F3942] hover:bg-[#F7F6F4] font-medium"
               title="Histórico de versões deste rascunho"
             >
-              <History className="w-3 h-3" />
+              <History className="w-3.5 h-3.5 text-[#6F7780]" />
               <span>Versões ({draftHistory.length})</span>
             </Button>
           </div>
         </div>
 
         {/* Barra de Seleção de Modelos de Laudo */}
-        <div className="p-3 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div className="p-3 bg-white flex flex-wrap items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2 flex-1 min-w-[280px]">
-            <BookOpen className="w-4 h-4 text-[#00A6A6] shrink-0" />
+            <BookOpen className="w-4 h-4 text-[#4A90D9] shrink-0" />
             <div className="w-full">
               <Select value={selectedTemplateId} onValueChange={handleApplyTemplate}>
-                <SelectTrigger className="text-xs bg-white h-8">
+                <SelectTrigger className="text-xs bg-white h-8 border-[#E3E6E8]">
                   <SelectValue placeholder="Carregar Modelo SBC (Atalho de redação editável)" />
                 </SelectTrigger>
                 <SelectContent>
@@ -584,84 +584,85 @@ export default function ReportEditor({
             </div>
           </div>
 
-          <div className="text-[11px] text-slate-500 italic max-w-sm">
+          <div className="text-[11px] text-[#6F7780] italic max-w-sm">
             Modelos são sugestões de redação e NÃO diagnósticos automáticos. Medidas numéricas devem
             ser mensuradas pelo médico.
           </div>
         </div>
       </Card>
 
-      {/* Formulário Estruturado Conforme Diretriz SBC 2022 */}
-      <Card className="border-slate-200 bg-white shadow-sm p-4 space-y-4">
+      {/* Formulário Estruturado Conforme Diretriz SBC 2022 com Tipografia Refinada */}
+      <Card className="border-[#E3E6E8] bg-white shadow-[0_1px_3px_rgba(47,57,66,0.03)] rounded-xl p-5 space-y-5">
         {/* Bloco 1: Parâmetros Quantitativos Opcionais */}
         <div>
-          <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 mb-3">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-              1. Medidas Eletrocardiográficas (Quantitativas Opcionais)
+          <div className="flex items-center justify-between pb-2 border-b border-[#E3E6E8] mb-3">
+            <h4 className="text-xs font-bold text-[#2F3942] uppercase tracking-wider flex items-center gap-1.5">
+              <span>1. Medidas Eletrocardiográficas</span>
+              <span className="text-[10px] text-[#6F7780] font-normal lowercase">
+                (quantitativas opcionais)
+              </span>
             </h4>
-            <span className="text-[10px] text-slate-400">
-              Preenchimento manual médico — sem preenchimento automático arbitrário
-            </span>
+            <span className="text-[10px] text-[#6F7780]">Preenchimento médico manual</span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <div>
-              <Label className="text-[11px] text-slate-600">FC (bpm)</Label>
+              <Label className="text-[11px] font-semibold text-[#2F3942]">FC (bpm)</Label>
               <Input
                 type="number"
                 placeholder="Ex: 72"
                 value={heartRate}
                 onChange={(e) => setHeartRate(e.target.value)}
-                className="text-xs h-8 mt-1"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
             <div>
-              <Label className="text-[11px] text-slate-600">Eixo QRS (°)</Label>
+              <Label className="text-[11px] font-semibold text-[#2F3942]">Eixo QRS (°)</Label>
               <Input
                 placeholder="Ex: +45° ou normal"
                 value={electricalAxis}
                 onChange={(e) => setElectricalAxis(e.target.value)}
-                className="text-xs h-8 mt-1"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
             <div>
-              <Label className="text-[11px] text-slate-600">Intervalo PR (ms)</Label>
+              <Label className="text-[11px] font-semibold text-[#2F3942]">Intervalo PR (ms)</Label>
               <Input
                 type="number"
                 placeholder="Ex: 160"
                 value={prIntervalMs}
                 onChange={(e) => setPrIntervalMs(e.target.value)}
-                className="text-xs h-8 mt-1"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
             <div>
-              <Label className="text-[11px] text-slate-600">Duração QRS (ms)</Label>
+              <Label className="text-[11px] font-semibold text-[#2F3942]">Duração QRS (ms)</Label>
               <Input
                 type="number"
                 placeholder="Ex: 88"
                 value={qrsDurationMs}
                 onChange={(e) => setQrsDurationMs(e.target.value)}
-                className="text-xs h-8 mt-1"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
             <div>
-              <Label className="text-[11px] text-slate-600">Intervalo QT (ms)</Label>
+              <Label className="text-[11px] font-semibold text-[#2F3942]">Intervalo QT (ms)</Label>
               <Input
                 type="number"
                 placeholder="Ex: 380"
                 value={qtIntervalMs}
                 onChange={(e) => setQtIntervalMs(e.target.value)}
-                className="text-xs h-8 mt-1"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
             <div>
-              <Label className="text-[11px] text-slate-600">QTc Bazett (ms)</Label>
+              <Label className="text-[11px] font-semibold text-[#2F3942]">QTc Bazett (ms)</Label>
               <Input
                 type="number"
                 placeholder="Ex: 410"
                 value={qtcIntervalMs}
                 onChange={(e) => setQtcIntervalMs(e.target.value)}
-                className="text-xs h-8 mt-1"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
           </div>
@@ -669,67 +670,75 @@ export default function ReportEditor({
 
         {/* Bloco 2: Análise Qualitativa dos Segmentos (SBC 2022) */}
         <div>
-          <div className="pb-1.5 border-b border-slate-100 mb-3">
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+          <div className="pb-2 border-b border-[#E3E6E8] mb-3">
+            <h4 className="text-xs font-bold text-[#2F3942] uppercase tracking-wider">
               2. Avaliação Morfológica e Condução
             </h4>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <Label className="text-[11px] text-slate-700">Ritmo Cardíaco</Label>
+              <Label className="text-[11px] font-semibold text-[#2F3942]">Ritmo Cardíaco</Label>
               <Input
                 placeholder="Ex: Ritmo sinusal regular"
                 value={cardiacRhythm}
                 onChange={(e) => setCardiacRhythm(e.target.value)}
-                className="text-xs h-8 mt-1"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
             <div>
-              <Label className="text-[11px] text-slate-700">Descrição da Onda P</Label>
+              <Label className="text-[11px] font-semibold text-[#2F3942]">
+                Descrição da Onda P
+              </Label>
               <Input
                 placeholder="Ex: Positiva em D1, D2 e aVF, duração e amplitude normais"
                 value={pWaveDesc}
                 onChange={(e) => setPWaveDesc(e.target.value)}
-                className="text-xs h-8 mt-1"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
             <div>
-              <Label className="text-[11px] text-slate-700">Condução Atrioventricular</Label>
+              <Label className="text-[11px] font-semibold text-[#2F3942]">
+                Condução Atrioventricular
+              </Label>
               <Input
                 placeholder="Ex: Condução AV normal, relação 1:1 preservada"
                 value={avConduction}
                 onChange={(e) => setAvConduction(e.target.value)}
-                className="text-xs h-8 mt-1"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
             <div>
-              <Label className="text-[11px] text-slate-700">Condução Intraventricular</Label>
+              <Label className="text-[11px] font-semibold text-[#2F3942]">
+                Condução Intraventricular
+              </Label>
               <Input
                 placeholder="Ex: Condução intraventricular normal (ou BDR, BRE, BDAS...)"
                 value={ivConduction}
                 onChange={(e) => setIvConduction(e.target.value)}
-                className="text-xs h-8 mt-1"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
             <div>
-              <Label className="text-[11px] text-slate-700">
+              <Label className="text-[11px] font-semibold text-[#2F3942]">
                 Repolarização Ventricular (ST-T / QT)
               </Label>
               <Input
                 placeholder="Ex: Sem alterações primárias da repolarização ventricular"
                 value={repolarization}
                 onChange={(e) => setRepolarization(e.target.value)}
-                className="text-xs h-8 mt-1"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
             <div>
-              <Label className="text-[11px] text-slate-700">Ondas Q e Achados Relevantes</Label>
+              <Label className="text-[11px] font-semibold text-[#2F3942]">
+                Ondas Q e Achados Relevantes
+              </Label>
               <Input
                 placeholder="Ex: Ausência de ondas Q patológicas de necrose"
                 value={qWaves}
                 onChange={(e) => setQWaves(e.target.value)}
-                className="text-xs h-8 mt-1"
+                className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
               />
             </div>
           </div>
@@ -737,21 +746,21 @@ export default function ReportEditor({
 
         {/* Bloco 3: Qualidade Técnica do Traçado */}
         <div>
-          <Label className="text-[11px] text-slate-700 font-semibold">
+          <Label className="text-[11px] text-[#2F3942] font-semibold">
             Avaliação da Qualidade Técnica do Traçado (Item 2 SBC 2022)
           </Label>
           <Input
             value={technicalQuality}
             onChange={(e) => setTechnicalQuality(e.target.value)}
             placeholder="Ex: Traçado legível, calibração N e 25mm/s, sem artefatos de tremor muscular"
-            className="text-xs h-8 mt-1"
+            className="text-xs h-8 mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
           />
         </div>
 
         {/* Bloco 4: Descrição e Conclusão em Texto Livre (Obrigatórias) */}
-        <div className="space-y-3 pt-2 border-t border-slate-100">
+        <div className="space-y-3 pt-2 border-t border-[#E3E6E8]">
           <div>
-            <Label className="text-xs font-bold text-slate-900">
+            <Label className="text-xs font-bold text-[#2F3942]">
               Descrição Eletrocardiográfica Detalhada (Texto Livre) *
             </Label>
             <Textarea
@@ -759,12 +768,12 @@ export default function ReportEditor({
               value={freeTextDescription}
               onChange={(e) => setFreeTextDescription(e.target.value)}
               placeholder="Descreva detalhadamente os achados do traçado eletrocardiográfico..."
-              className="text-xs mt-1"
+              className="text-xs mt-1 border-[#E3E6E8] focus:border-[#4A90D9]"
             />
           </div>
 
           <div>
-            <Label className="text-xs font-bold text-slate-900">
+            <Label className="text-xs font-bold text-[#2F3942]">
               Conclusão Eletrocardiográfica Diagnóstica (Texto Livre) *
             </Label>
             <Textarea
@@ -772,20 +781,20 @@ export default function ReportEditor({
               value={freeTextConclusion}
               onChange={(e) => setFreeTextConclusion(e.target.value)}
               placeholder="Ex: Eletrocardiograma dentro dos limites da normalidade."
-              className="text-xs mt-1 font-semibold text-slate-900"
+              className="text-xs mt-1 font-semibold text-[#2F3942] border-[#E3E6E8] focus:border-[#4A90D9]"
             />
           </div>
         </div>
 
         {/* Bloco 5: Ações Críticas e Devolução */}
-        <div className="p-3 bg-amber-50/50 rounded-lg border border-amber-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+        <div className="p-3.5 bg-amber-50/60 rounded-xl border border-amber-200/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
             <div>
-              <span className="font-bold text-amber-950">
+              <span className="font-bold text-[#2F3942]">
                 Segurança do Paciente & Triagem Técnica
               </span>
-              <p className="text-[11px] text-amber-800">
+              <p className="text-[11px] text-[#6F7780]">
                 Sinalize suspeitas críticas ou devolva traçados com defeitos técnicos à clínica
               </p>
             </div>
@@ -796,7 +805,7 @@ export default function ReportEditor({
               size="sm"
               variant="outline"
               onClick={() => setIsCriticalModalOpen(true)}
-              className={`h-7 text-xs border-red-300 ${
+              className={`h-8 text-xs border-red-300 ${
                 hasCriticalFindingRegistered
                   ? 'bg-red-100 text-red-900 font-bold border-red-400'
                   : 'bg-red-50 text-red-800 hover:bg-red-100'
@@ -812,23 +821,23 @@ export default function ReportEditor({
               size="sm"
               variant="outline"
               onClick={() => setIsReturnModalOpen(true)}
-              className="h-7 text-xs border-slate-300 text-slate-700 hover:bg-slate-100"
+              className="h-8 text-xs border-[#E3E6E8] text-[#2F3942] hover:bg-white"
             >
-              <RotateCcw className="w-3.5 h-3.5 mr-1 text-slate-600" />
+              <RotateCcw className="w-3.5 h-3.5 mr-1 text-[#6F7780]" />
               Devolver c/ Problema Técnico
             </Button>
           </div>
         </div>
 
-        {/* ETAPA 4A: Barra de Documentos e Assinatura Digital */}
-        <div className="p-3 bg-slate-50/70 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <FileText className="w-4 h-4 text-[#0E4C92] shrink-0" />
+        {/* ETAPA 4A: Barra de Documentos e Assinatura Digital Sobria */}
+        <div className="p-3.5 bg-[#F7F6F4] rounded-xl border border-[#E3E6E8] flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <FileText className="w-4 h-4 text-[#4A90D9] shrink-0" />
             <div>
-              <span className="font-bold text-slate-900">
+              <span className="font-bold text-[#2F3942]">
                 Documento Médico (PDF) & Assinatura Digital
               </span>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-[#6F7780]">
                 Conferência do documento, preparação para assinatura PAdES ICP-Brasil e consulta de
                 versões
               </p>
@@ -841,13 +850,13 @@ export default function ReportEditor({
               variant="outline"
               onClick={handlePreviewPdf}
               disabled={isLoadingPreview}
-              className="h-7 text-xs gap-1 border-slate-300 bg-white"
+              className="h-8 text-xs gap-1.5 border-[#E3E6E8] bg-white text-[#2F3942] hover:bg-[#F7F6F4]"
               title="Conferir o documento completo antes de iniciar a assinatura"
             >
               {isLoadingPreview ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
               ) : (
-                <Eye className="w-3 h-3 text-[#0E4C92]" />
+                <Eye className="w-3.5 h-3.5 text-[#4A90D9]" />
               )}
               <span>Visualizar PDF</span>
             </Button>
@@ -857,13 +866,13 @@ export default function ReportEditor({
               variant="outline"
               onClick={handlePrepareSignature}
               disabled={isPreparing}
-              className="h-7 text-xs gap-1 border-[#0E4C92] text-[#0E4C92] bg-white hover:bg-sky-50"
+              className="h-8 text-xs gap-1.5 border-[#4A90D9]/40 text-[#4A90D9] bg-white hover:bg-[#4A90D9]/5 font-semibold"
               title="Gerar PDF definitivo com hash SHA-256 e bloquear esta versão"
             >
               {isPreparing ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
               ) : (
-                <PenTool className="w-3 h-3" />
+                <PenTool className="w-3.5 h-3.5" />
               )}
               <span>Preparar PDF para Assinatura</span>
             </Button>
@@ -872,10 +881,10 @@ export default function ReportEditor({
               size="sm"
               variant="outline"
               onClick={handleOpenVersions}
-              className="h-7 text-xs gap-1 border-slate-300 bg-white"
+              className="h-8 text-xs gap-1.5 border-[#E3E6E8] bg-white text-[#2F3942] hover:bg-[#F7F6F4]"
               title="Consultar versões já geradas deste documento"
             >
-              <Layers className="w-3 h-3 text-slate-600" />
+              <Layers className="w-3.5 h-3.5 text-[#6F7780]" />
               <span>Versões</span>
             </Button>
 
@@ -883,14 +892,14 @@ export default function ReportEditor({
               size="sm"
               variant="outline"
               onClick={handleOpenSignatureStatus}
-              className="h-7 text-xs gap-1 border-slate-300 bg-white"
+              className="h-8 text-xs gap-1.5 border-[#E3E6E8] bg-white text-[#2F3942] hover:bg-[#F7F6F4]"
               title="Visualizar status da assinatura digital"
             >
-              <ShieldCheck className="w-3 h-3 text-emerald-600" />
-              <span>Status da Assinatura</span>
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Status Assinatura</span>
             </Button>
 
-            {/* ETAPA 6A: Botão Conector Bird ID Pro */}
+            {/* Conector Bird ID Pro com Paleta Oficial */}
             <Button
               size="sm"
               onClick={async () => {
@@ -908,14 +917,14 @@ export default function ReportEditor({
                   alert(`Erro ao carregar documento: ${err.message}`)
                 }
               }}
-              className="h-7 text-xs gap-1 bg-[#0E4C92] hover:bg-[#0c3e77] text-white shadow-sm font-semibold"
+              className="h-8 text-xs gap-1.5 bg-[#4A90D9] hover:bg-[#3b7dc2] text-white shadow-xs font-semibold"
               title="Conector de Assinatura Digital Bird ID Pro (Soluti CESS)"
             >
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
+              <ShieldCheck className="w-3.5 h-3.5 text-white" />
               <span>Assinador Bird ID Pro</span>
             </Button>
 
-            {/* REQUISITO: Assinatura Digital Externa Opcional (ICP-Brasil) */}
+            {/* Assinatura Digital Externa Opcional */}
             <Button
               size="sm"
               variant="outline"
@@ -926,7 +935,6 @@ export default function ReportEditor({
                     setActiveReportDoc(docs[0])
                     setIsExternalSigningModalOpen(true)
                   } else {
-                    // Se não tiver preparado ainda, avisa para preparar
                     alert(
                       'Prepare o PDF para assinatura primeiro. O PDF gerado já conterá sua assinatura manuscrita e poderá ser baixado para assinatura externa.',
                     )
@@ -935,11 +943,11 @@ export default function ReportEditor({
                   alert(`Erro ao buscar documento: ${err.message}`)
                 }
               }}
-              className="h-7 text-xs gap-1 border-purple-300 text-purple-700 bg-purple-50/60 hover:bg-purple-100 font-semibold"
+              className="h-8 text-xs gap-1.5 border-[#E3E6E8] text-[#2F3942] bg-white hover:bg-[#F7F6F4] font-medium"
               title="Baixar PDF para assinatura externa com certificado ICP-Brasil e importar de volta"
             >
-              <Download className="w-3.5 h-3.5 text-purple-600" />
-              <span>Assinatura Digital Externa (Opcional)</span>
+              <Download className="w-3.5 h-3.5 text-[#6F7780]" />
+              <span>Assinatura Externa</span>
             </Button>
           </div>
         </div>
@@ -964,12 +972,13 @@ export default function ReportEditor({
         )}
 
         {/* Rodapé: Envio para Aguardando Assinatura */}
-        <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-            <Lock className="w-3.5 h-3.5 text-slate-400" />
+        <div className="pt-3 border-t border-[#E3E6E8] flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="text-[11px] text-[#6F7780] flex items-center gap-1.5">
+            <Lock className="w-3.5 h-3.5 text-[#6F7780]" />
             <span>
-              Ao concluir, o exame passará para <strong>AGUARDANDO_ASSINATURA</strong> (não liberado
-              diretamente).
+              Ao concluir, o exame passará para{' '}
+              <strong className="text-[#2F3942]">AGUARDANDO_ASSINATURA</strong> (não liberado
+              diretamente sem assinatura válida).
             </span>
           </div>
 
@@ -977,16 +986,16 @@ export default function ReportEditor({
             size="sm"
             onClick={handleSubmitReport}
             disabled={isSubmittingReport}
-            className="w-full sm:w-auto bg-[#0E4C92] hover:bg-[#0c3e77] text-white text-xs font-semibold px-4"
+            className="w-full sm:w-auto bg-[#2F3942] hover:bg-[#1f262c] text-white text-xs font-semibold px-4 h-9 shadow-xs transition-colors"
           >
             {isSubmittingReport ? (
               <>
-                <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
                 <span>Enviando Laudo...</span>
               </>
             ) : (
               <>
-                <Send className="w-3.5 h-3.5 mr-1" />
+                <Send className="w-3.5 h-3.5 mr-1.5 text-[#4A90D9]" />
                 <span>Concluir Elaboração do Laudo</span>
               </>
             )}

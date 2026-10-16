@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { ExamRequest } from '@/types/telelaudos'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -13,8 +13,6 @@ import {
   Minimize2,
   FileText,
   Search,
-  ChevronLeft,
-  ChevronRight,
   ShieldCheck,
   Eye,
   Info,
@@ -38,8 +36,6 @@ export default function EcgViewer({
   const [isMagnifierActive, setIsMagnifierActive] = useState<boolean>(false)
   const [magnifierPos, setMagnifierPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [mouseInside, setMouseInside] = useState<boolean>(false)
-  const [currentPage, setCurrentPage] = useState<number>(1)
-  const [totalPages, setTotalPages] = useState<number>(1)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
@@ -61,8 +57,6 @@ export default function EcgViewer({
     setZoom(1)
     setRotation(0)
     setIsMagnifierActive(false)
-    setCurrentPage(1)
-    setTotalPages(1)
   }, [exam.id])
 
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 0.25, 4))
@@ -90,34 +84,34 @@ export default function EcgViewer({
   }
 
   return (
-    <Card className="flex flex-col h-full border-slate-200 shadow-sm bg-slate-900 text-white overflow-hidden">
-      {/* Barra de Ferramentas do Visualizador */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-950 border-b border-slate-800 text-xs shrink-0">
+    <Card className="flex flex-col h-full border-[#E3E6E8] shadow-[0_1px_3px_rgba(47,57,66,0.04)] bg-white text-[#2F3942] rounded-xl overflow-hidden">
+      {/* Barra de Ferramentas do Visualizador Médica e Sóbria */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 bg-[#F7F6F4] border-b border-[#E3E6E8] text-xs shrink-0">
         <div className="flex items-center gap-2">
           <Badge
             variant="outline"
-            className="border-emerald-500/40 text-emerald-400 bg-emerald-950/40 gap-1 text-[11px]"
+            className="border-emerald-200 text-emerald-800 bg-emerald-50 gap-1 text-[11px] font-medium"
           >
-            <ShieldCheck className="w-3 h-3 text-emerald-400" />
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
             <span>Traçado Original Protegido</span>
           </Badge>
-          <span className="text-slate-400 font-mono text-[11px] truncate max-w-[160px] sm:max-w-xs">
+          <span className="text-[#6F7780] font-mono text-[11px] truncate max-w-[140px] sm:max-w-xs">
             {exam.exam_file}
           </span>
         </div>
 
-        {/* Controles de Manipulação Visual */}
+        {/* Controles Ergonômicos de Manipulação Visual */}
         <div className="flex items-center gap-1">
           <Button
             size="sm"
             variant="ghost"
             onClick={handleZoomOut}
             title="Diminuir Zoom"
-            className="h-7 w-7 p-0 text-slate-300 hover:text-white hover:bg-slate-800"
+            className="h-7 w-7 p-0 text-[#6F7780] hover:text-[#2F3942] hover:bg-white"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </Button>
-          <span className="text-[11px] font-mono text-slate-300 px-1 select-none">
+          <span className="text-[11px] font-mono text-[#2F3942] font-semibold px-1 select-none">
             {Math.round(zoom * 100)}%
           </span>
           <Button
@@ -125,19 +119,19 @@ export default function EcgViewer({
             variant="ghost"
             onClick={handleZoomIn}
             title="Aumentar Zoom"
-            className="h-7 w-7 p-0 text-slate-300 hover:text-white hover:bg-slate-800"
+            className="h-7 w-7 p-0 text-[#6F7780] hover:text-[#2F3942] hover:bg-white"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </Button>
 
-          <div className="h-4 w-px bg-slate-800 mx-1" />
+          <div className="h-4 w-px bg-[#E3E6E8] mx-1" />
 
           <Button
             size="sm"
             variant="ghost"
             onClick={handleRotateCcw}
             title="Girar 90° Anti-horário"
-            className="h-7 w-7 p-0 text-slate-300 hover:text-white hover:bg-slate-800"
+            className="h-7 w-7 p-0 text-[#6F7780] hover:text-[#2F3942] hover:bg-white"
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </Button>
@@ -146,7 +140,7 @@ export default function EcgViewer({
             variant="ghost"
             onClick={handleRotateCw}
             title="Girar 90° Horário"
-            className="h-7 w-7 p-0 text-slate-300 hover:text-white hover:bg-slate-800"
+            className="h-7 w-7 p-0 text-[#6F7780] hover:text-[#2F3942] hover:bg-white"
           >
             <RotateCw className="w-3.5 h-3.5" />
           </Button>
@@ -158,8 +152,8 @@ export default function EcgViewer({
             title="Modo Ampliação (Lupa)"
             className={`h-7 px-2 text-xs gap-1 ${
               isMagnifierActive
-                ? 'bg-[#00A6A6] text-white hover:bg-[#008f8f]'
-                : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                ? 'bg-[#4A90D9] text-white hover:bg-[#3b7dc2]'
+                : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-white'
             }`}
           >
             <Search className="w-3.5 h-3.5" />
@@ -171,7 +165,7 @@ export default function EcgViewer({
             variant="ghost"
             onClick={handleReset}
             title="Ajustar à tela"
-            className="h-7 px-2 text-[11px] text-slate-300 hover:text-white hover:bg-slate-800"
+            className="h-7 px-2 text-[11px] text-[#6F7780] hover:text-[#2F3942] hover:bg-white"
           >
             Ajustar
           </Button>
@@ -182,7 +176,7 @@ export default function EcgViewer({
               variant="ghost"
               onClick={toggleFullscreen}
               title={fullscreenMode ? 'Restaurar' : 'Tela Cheia'}
-              className="h-7 w-7 p-0 text-slate-300 hover:text-white hover:bg-slate-800"
+              className="h-7 w-7 p-0 text-[#6F7780] hover:text-[#2F3942] hover:bg-white"
             >
               {fullscreenMode ? (
                 <Minimize2 className="w-3.5 h-3.5" />
@@ -194,27 +188,29 @@ export default function EcgViewer({
         </div>
       </div>
 
-      {/* Área Central de Visualização */}
+      {/* Área Central de Visualização Confortável com fundo limpo */}
       <div
         ref={containerRef}
         onMouseMove={handleMouseMove}
         onMouseEnter={() => setMouseInside(true)}
         onMouseLeave={() => setMouseInside(false)}
-        className="relative flex-1 bg-slate-950 overflow-auto flex items-center justify-center p-4 select-none min-h-[360px]"
+        className="relative flex-1 bg-[#2F3942]/5 overflow-auto flex items-center justify-center p-4 select-none min-h-[440px]"
       >
         {isPdf ? (
           <div className="w-full h-full flex flex-col items-center justify-center">
             {fileUrl ? (
               <iframe
                 src={`${fileUrl}#toolbar=1&navpanes=1`}
-                className="w-full h-full min-h-[460px] rounded border border-slate-800 bg-white"
+                className="w-full h-full min-h-[500px] rounded-lg border border-[#E3E6E8] bg-white shadow-xs"
                 title="Visualizador de PDF do ECG"
               />
             ) : (
-              <div className="text-center p-6 text-slate-400">
-                <FileText className="w-12 h-12 mx-auto text-slate-600 mb-2" />
-                <p>Arquivo PDF anexado à solicitação.</p>
-                <p className="text-[11px] text-slate-500 mt-1">
+              <div className="text-center p-6 text-[#6F7780]">
+                <FileText className="w-12 h-12 mx-auto text-[#6F7780]/40 mb-2" />
+                <p className="font-semibold text-xs text-[#2F3942]">
+                  Arquivo PDF anexado à solicitação.
+                </p>
+                <p className="text-[11px] text-[#6F7780] mt-1">
                   Abra o arquivo diretamente pelo link seguro do sistema.
                 </p>
               </div>
@@ -232,7 +228,7 @@ export default function EcgViewer({
                   transform: `scale(${zoom}) rotate(${rotation}deg)`,
                   transformOrigin: 'center center',
                 }}
-                className="max-h-[650px] max-w-full object-contain rounded border border-slate-800 shadow-2xl bg-white"
+                className="max-h-[640px] max-w-full object-contain rounded-lg border border-[#E3E6E8] shadow-sm bg-white"
               />
             ) : (
               <div
@@ -240,25 +236,25 @@ export default function EcgViewer({
                   transform: `scale(${zoom}) rotate(${rotation}deg)`,
                   transformOrigin: 'center center',
                 }}
-                className="w-[600px] h-[400px] bg-red-950/20 border border-red-500/30 rounded flex flex-col items-center justify-center p-6 text-center"
+                className="w-[560px] h-[380px] bg-white border border-[#E3E6E8] rounded-lg flex flex-col items-center justify-center p-6 text-center shadow-xs"
               >
                 {/* Grid milimetrado estético simulador de papel de ECG */}
                 <div
                   className="w-full h-full rounded flex items-center justify-center relative overflow-hidden"
                   style={{
-                    backgroundColor: '#fff9f5',
+                    backgroundColor: '#fffdfa',
                     backgroundImage:
-                      'linear-gradient(to right, rgba(255,0,0,0.15) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,0,0,0.15) 1px, transparent 1px)',
+                      'linear-gradient(to right, rgba(220,100,80,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(220,100,80,0.12) 1px, transparent 1px)',
                     backgroundSize: '20px 20px',
                   }}
                 >
-                  <div className="text-center p-4 bg-white/90 rounded border border-red-200 text-slate-800 shadow-sm max-w-md">
-                    <Info className="w-6 h-6 text-[#0E4C92] mx-auto mb-1" />
+                  <div className="text-center p-4 bg-white/95 rounded-lg border border-[#E3E6E8] text-[#2F3942] shadow-xs max-w-sm">
+                    <Info className="w-5 h-5 text-[#4A90D9] mx-auto mb-1.5" />
                     <div className="font-bold text-xs">Exame Cadastrado na Fila</div>
-                    <div className="text-[11px] text-slate-600 mt-1 font-mono">
+                    <div className="text-[11px] text-[#6F7780] mt-1 font-mono">
                       Arquivo: {exam.exam_file}
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-2">
+                    <div className="text-[10px] text-[#6F7780] mt-2">
                       Visualização preservada do exame original sem qualquer alteração.
                     </div>
                   </div>
@@ -269,11 +265,12 @@ export default function EcgViewer({
             {/* Lente da Lupa de Alta Ampliação */}
             {isMagnifierActive && mouseInside && fileUrl && (
               <div
-                className="pointer-events-none absolute w-36 h-36 rounded-full border-2 border-[#00A6A6] shadow-2xl overflow-hidden bg-white z-50"
+                className="pointer-events-none absolute w-36 h-36 rounded-full border-2 border-[#4A90D9] shadow-2xl overflow-hidden bg-white z-50"
                 style={{
                   left: `${magnifierPos.x - 72}px`,
                   top: `${magnifierPos.y - 72}px`,
-                  boxShadow: '0 0 0 3px rgba(0, 166, 166, 0.4), 0 10px 25px rgba(0,0,0,0.5)',
+                  boxShadow:
+                    '0 0 0 3px rgba(74, 144, 217, 0.35), 0 10px 25px rgba(47, 57, 66, 0.3)',
                 }}
               >
                 <div
@@ -297,18 +294,18 @@ export default function EcgViewer({
       </div>
 
       {/* Rodapé com Metadados Clínicos do Traçado */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 bg-slate-950 border-t border-slate-800 text-[11px] text-slate-400 shrink-0">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5 bg-[#F7F6F4] border-t border-[#E3E6E8] text-[11px] text-[#6F7780] shrink-0">
         <div className="flex items-center gap-3">
           <span>
             Paciente:{' '}
-            <strong className="text-slate-200">
+            <strong className="text-[#2F3942]">
               {exam.expand?.patient_id?.full_name || 'Paciente'}
             </strong>
           </span>
           <span>•</span>
           <span>
             Clínica:{' '}
-            <strong className="text-slate-200">
+            <strong className="text-[#2F3942]">
               {exam.expand?.organization_id?.trade_name ||
                 exam.expand?.organization_id?.name ||
                 '—'}
@@ -317,17 +314,17 @@ export default function EcgViewer({
           {exam.has_pacemaker && (
             <>
               <span>•</span>
-              <Badge className="bg-amber-900/60 text-amber-200 border-amber-600 text-[10px] px-1.5 py-0">
+              <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-[10px] px-1.5 py-0">
                 Portador de Marcapasso
               </Badge>
             </>
           )}
         </div>
 
-        <div className="flex items-center gap-2 text-slate-400">
-          <span>Velocidade padrão: 25 mm/s • Ganho: N (10 mm/mV)</span>
+        <div className="flex items-center gap-2 text-[#6F7780]">
+          <span>Velocidade: 25 mm/s • Ganho: N (10 mm/mV)</span>
           {isMagnifierActive && (
-            <span className="text-[#00A6A6] font-medium">• Lupa ativa (2.5x)</span>
+            <span className="text-[#4A90D9] font-medium">• Lupa ativa (2.5x)</span>
           )}
         </div>
       </div>

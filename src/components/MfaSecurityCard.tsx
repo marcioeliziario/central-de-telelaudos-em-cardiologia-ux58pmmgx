@@ -217,21 +217,21 @@ export const MfaSecurityCard: React.FC = () => {
               )}
             </div>
             <div>
-              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <CardTitle className="text-sm font-bold text-[#2F3942] flex items-center gap-2">
                 <span>Autenticação Multifator (MFA / 2FA) & Sessões</span>
                 <Badge
                   className={
                     isMfaActive
-                      ? 'bg-emerald-600 text-white text-xs'
-                      : 'bg-amber-100 text-amber-900 border-amber-300 text-xs'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 text-[10px] font-medium'
+                      : 'bg-amber-50 text-amber-800 border-amber-300 text-[10px] font-medium'
                   }
                 >
                   {isMfaActive ? 'MFA Ativo (TOTP)' : 'MFA Opcional (Desativado)'}
                 </Badge>
               </CardTitle>
-              <CardDescription className="text-xs text-slate-600 mt-0.5">
-                Padrão RFC 6238 (TOTP 6 dígitos, janela 30s) • Google Authenticator, Microsoft
-                Authenticator, Aegis e 1Password.
+              <CardDescription className="text-xs text-[#6F7780] mt-0.5">
+                Padrão RFC 6238 (TOTP 6 dígitos, janela 30s) • Google Authenticator e Microsoft
+                Authenticator
               </CardDescription>
             </div>
           </div>
@@ -241,7 +241,7 @@ export const MfaSecurityCard: React.FC = () => {
             size="sm"
             onClick={loadStatus}
             disabled={loading}
-            className="text-xs gap-1.5"
+            className="text-xs gap-1.5 border-[#E3E6E8] text-[#2F3942] hover:bg-[#F7F6F4]"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Atualizar</span>
@@ -385,7 +385,7 @@ export const MfaSecurityCard: React.FC = () => {
               type="button"
               onClick={handleStartSetup}
               disabled={loading}
-              className="bg-[#0E4C92] hover:bg-blue-800 text-white text-xs font-semibold gap-1.5"
+              className="bg-[#4A90D9] hover:bg-[#3b7dc2] text-white text-xs font-semibold gap-1.5 shadow-xs"
             >
               <Smartphone className="w-3.5 h-3.5" />
               <span>Configurar Segundo Fator (TOTP)</span>

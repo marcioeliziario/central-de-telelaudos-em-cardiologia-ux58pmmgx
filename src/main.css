@@ -25,57 +25,62 @@
   }
 
   :root {
-    --background: 214 32% 98%;
-    --foreground: 222 47% 15%;
+    /* Paleta Oficial Márcio Eliziário — Clínica Médica e Cardiologia */
+    /* Fundo Claro: #F7F6F4 */
+    --background: 40 14% 96.5%;
+    /* Grafite Escuro: #2F3942 */
+    --foreground: 210 17% 22%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 15%;
+    --card-foreground: 210 17% 22%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 15%;
+    --popover-foreground: 210 17% 22%;
 
-    --primary: 212 82% 31%;
-    --primary-foreground: 210 40% 98%;
+    /* Azul Principal Oficial: #4A90D9 */
+    --primary: 211 65% 57%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 180 100% 33%;
-    --secondary-foreground: 210 40% 98%;
+    /* Cinza de Apoio Oficial: #6F7780 */
+    --secondary: 212 7% 47%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 214 20% 93%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 40 10% 92%;
+    --muted-foreground: 212 7% 47%;
 
-    --accent: 212 82% 94%;
-    --accent-foreground: 212 82% 25%;
+    --accent: 211 65% 96%;
+    --accent-foreground: 211 65% 35%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214 28% 88%;
-    --input: 214 28% 88%;
-    --ring: 212 82% 31%;
+    --border: 210 12% 88%;
+    --input: 210 12% 88%;
+    --ring: 211 65% 57%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 98%;
+    /* Tokens Específicos da Identidade Médica Márcio Eliziário */
+    --brand-blue: #4a90d9;
+    --brand-graphite: #2f3942;
+    --brand-support: #6f7780;
+    --brand-bg: #f7f6f4;
+    --brand-card: #ffffff;
 
-    --sidebar-foreground: 222.2 84% 4.9%;
-
-    --sidebar-primary: 222.2 84% 4.9%;
-
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 210 17% 22%;
+    --sidebar-primary: 211 65% 57%;
     --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 40 14% 95%;
+    --sidebar-accent-foreground: 210 17% 22%;
+    --sidebar-border: 210 12% 88%;
+    --sidebar-ring: 211 65% 57%;
 
-    --sidebar-accent: 210 40% 98%;
-
-    --sidebar-accent-foreground: 222.2 84% 4.9%;
-
-    --sidebar-border: 214.3 31.8% 91.4%;
-
-    --sidebar-ring: 222.2 84% 4.9%;
-
-    --chart-1: 34 100% 44%;
-    --chart-2: 189 100% 38%;
-    --chart-3: 209 100% 32%;
-    --chart-4: 42 100% 50%;
-    --chart-5: 33 100% 50%;
+    --chart-1: 211 65% 57%;
+    --chart-2: 210 17% 22%;
+    --chart-3: 212 7% 47%;
+    --chart-4: 152 45% 42%;
+    --chart-5: 38 80% 50%;
   }
 
   .dark {

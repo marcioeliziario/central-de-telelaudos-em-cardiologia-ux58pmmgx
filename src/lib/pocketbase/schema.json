@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T11:28:38.593Z",
+  "generatedAt": "2026-10-16T11:57:36.801Z",
   "collections": [
     {
       "name": "users",
@@ -242,7 +242,7 @@
         }
       ],
       "indexes": [
-        "CREATE UNIQUE INDEX idx_user_org_unique ON user_organizations (user_id, organization_id)"
+        "CREATE UNIQUE INDEX `idx_user_org_role_unique` ON `user_organizations` (user_id, organization_id, role)"
       ]
     },
     {

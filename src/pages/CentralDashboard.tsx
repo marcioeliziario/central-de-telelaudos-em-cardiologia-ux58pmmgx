@@ -9,14 +9,14 @@ import { AlertCircle, Lock, Building2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 export default function CentralDashboard() {
-  const { isAuthenticated, isLoading, currentRole, user, userOrgs, switchOrg, currentOrg } =
+  const { isAuthenticated, isLoading, currentRole, activeEnvironment, user, userOrgs, currentOrg } =
     useAuth()
 
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 space-y-3">
-        <div className="w-8 h-8 border-2 border-[#0E4C92] border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs text-slate-500 font-medium">Carregando Central de Telelaudos...</p>
+        <div className="w-8 h-8 border-2 border-[#4A90D9] border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs text-[#6F7780] font-medium">Carregando Central de Telelaudos...</p>
       </div>
     )
   }
@@ -53,13 +53,30 @@ export default function CentralDashboard() {
     )
   }
 
-  // Roteamento de acordo com o papel na organização atual
-  if (currentRole === 'admin') {
-    return <AdminDashboard />
+  // Roteamento conforme activeEnvironment (prioritário para multi-perfil Dr. Márcio)
+  // e isolamento estrito para perfis de clínicas contratantes
+  if (activeEnvironment === 'cardiologist' || currentRole === 'cardiologist') {
+    if (activeEnvironment === 'cardiologist') {
+      return <CardiologistDashboard />
+    }
   }
 
-  if (currentRole === 'clinic_manager' || currentRole === 'clinic_operator') {
+  if (activeEnvironment === 'admin' || currentRole === 'admin') {
+    if (activeEnvironment === 'admin') {
+      return <AdminDashboard />
+    }
+  }
+
+  if (
+    currentRole === 'clinic_manager' ||
+    currentRole === 'clinic_operator' ||
+    activeEnvironment === 'clinic'
+  ) {
     return <ClinicDashboard />
+  }
+
+  if (currentRole === 'admin') {
+    return <AdminDashboard />
   }
 
   if (currentRole === 'cardiologist') {

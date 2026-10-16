@@ -3,9 +3,9 @@
  * Evita strings fixas desatualizadas espalhadas pelos componentes.
  */
 export const APP_CONFIG = {
-  version: '0.0.31',
-  versionLabel: 'v0.0.31',
-  stageName: 'Etapa Design 2 — Reorganização da Experiência Clínica (Correção de Segurança)',
+  version: '0.0.32',
+  versionLabel: 'v0.0.32',
+  stageName: 'Múltiplos Perfis Funcionais para a Mesma Identidade Autenticada',
   sessionDurationLabel: '12 horas (43.200s)',
   sessionDurationSecs: 43200,
   idleTimeoutLabel: '30 minutos',

@@ -2,16 +2,22 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { AuthUser, UserOrganization, UserRole, Organization } from '@/types/telelaudos'
 
+export type ActiveEnvironment = 'admin' | 'cardiologist' | 'clinic'
+
 interface AuthContextType {
   user: AuthUser | null
   userOrgs: UserOrganization[]
   currentOrg: Organization | null
   currentRole: UserRole | null
+  availableRoles: UserRole[]
+  activeEnvironment: ActiveEnvironment
+  canSwitchEnvironment: boolean
   isAuthenticated: boolean
   isLoading: boolean
   login: (email: string, pass: string) => Promise<void>
   logout: () => void
   switchOrg: (orgId: string) => void
+  switchEnvironment: (env: 'admin' | 'cardiologist') => void
   requestPasswordReset: (email: string) => Promise<{ success: boolean; note?: string }>
 }
 
@@ -22,7 +28,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userOrgs, setUserOrgs] = useState<UserOrganization[]>([])
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null)
   const [currentRole, setCurrentRole] = useState<UserRole | null>(null)
+  const [activeEnvironment, setActiveEnvironment] = useState<ActiveEnvironment>('admin')
   const [isLoading, setIsLoading] = useState<boolean>(true)
+
+  // Lista de papéis ativos disponíveis para a conta autenticada
+  const availableRoles = React.useMemo(() => {
+    const set = new Set<UserRole>()
+    userOrgs.forEach((uo) => {
+      if (uo.is_active !== false) {
+        set.add(uo.role)
+      }
+    })
+    return Array.from(set)
+  }, [userOrgs])
+
+  // O Dr. Márcio (ou qualquer usuário com ambos os papéis) pode alternar
+  const canSwitchEnvironment =
+    availableRoles.includes('admin') && availableRoles.includes('cardiologist')
 
   const refreshProfile = async () => {
     if (!pb.authStore.isValid || !pb.authStore.record) {
@@ -30,6 +52,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUserOrgs([])
       setCurrentOrg(null)
       setCurrentRole(null)
+      setActiveEnvironment('admin')
       setIsLoading(false)
       return
     }
@@ -46,17 +69,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUserOrgs(orgLinks)
 
       if (orgLinks.length > 0) {
-        // Selecionar primeira organização ativa ou manter se já selecionada
-        const savedOrgId = localStorage.getItem('telelaudos_current_org_id')
-        const found = orgLinks.find((l) => l.organization_id === savedOrgId) || orgLinks[0]
-        setCurrentRole(found.role)
-        if (found.expand?.organization_id) {
-          setCurrentOrg(found.expand.organization_id)
+        const rolesInOrgs = Array.from(new Set(orgLinks.map((l) => l.role)))
+
+        // Determinar ambiente ativo salvo ou prioritário
+        const savedEnv = localStorage.getItem(
+          'telelaudos_active_environment',
+        ) as ActiveEnvironment | null
+        let resolvedEnv: ActiveEnvironment = 'admin'
+
+        if (rolesInOrgs.includes('admin') && rolesInOrgs.includes('cardiologist')) {
+          if (savedEnv === 'cardiologist' || savedEnv === 'admin') {
+            resolvedEnv = savedEnv
+          } else {
+            resolvedEnv = 'admin' // Padrão prioritário para admin
+          }
+        } else if (rolesInOrgs.includes('admin')) {
+          resolvedEnv = 'admin'
+        } else if (rolesInOrgs.includes('cardiologist')) {
+          resolvedEnv = 'cardiologist'
+        } else if (
+          rolesInOrgs.includes('clinic_manager') ||
+          rolesInOrgs.includes('clinic_operator')
+        ) {
+          resolvedEnv = 'clinic'
+        } else {
+          resolvedEnv = 'admin'
+        }
+
+        setActiveEnvironment(resolvedEnv)
+
+        // Selecionar vínculo correspondente ao ambiente ativo
+        let matchingLink = orgLinks.find((l) => l.role === (resolvedEnv as unknown as UserRole))
+        if (!matchingLink) {
+          const savedOrgId = localStorage.getItem('telelaudos_current_org_id')
+          matchingLink = orgLinks.find((l) => l.organization_id === savedOrgId) || orgLinks[0]
+        }
+
+        setCurrentRole(matchingLink.role)
+        if (matchingLink.expand?.organization_id) {
+          setCurrentOrg(matchingLink.expand.organization_id)
         }
       } else {
-        // Usuário sem organização vinculada (ex: auto-registro inicial)
+        // Usuário sem organização vinculada
         setCurrentRole(null)
         setCurrentOrg(null)
+        setActiveEnvironment('admin')
       }
     } catch (err) {
       console.error('Erro ao carregar perfil do usuário:', err)
@@ -88,7 +145,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUserOrgs([])
     setCurrentOrg(null)
     setCurrentRole(null)
+    setActiveEnvironment('admin')
     localStorage.removeItem('telelaudos_current_org_id')
+    localStorage.removeItem('telelaudos_active_environment')
   }
 
   const switchOrg = (orgId: string) => {
@@ -99,6 +158,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentOrg(link.expand.organization_id)
       }
       localStorage.setItem('telelaudos_current_org_id', orgId)
+    }
+  }
+
+  // Alternar ambiente instantaneamente (sem logout) para usuários com múltiplos papéis
+  const switchEnvironment = (env: 'admin' | 'cardiologist') => {
+    if (!availableRoles.includes(env)) {
+      console.warn(`Ambiente ${env} não autorizado para este usuário.`)
+      return
+    }
+
+    setActiveEnvironment(env)
+    localStorage.setItem('telelaudos_active_environment', env)
+
+    // Ajustar o vínculo e papel ativo
+    const link = userOrgs.find((l) => l.role === env)
+    if (link) {
+      setCurrentRole(link.role)
+      if (link.expand?.organization_id) {
+        setCurrentOrg(link.expand.organization_id)
+      }
     }
   }
 
@@ -121,11 +200,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userOrgs,
         currentOrg,
         currentRole,
+        availableRoles,
+        activeEnvironment,
+        canSwitchEnvironment,
         isAuthenticated: !!user && pb.authStore.isValid,
         isLoading,
         login,
         logout,
         switchOrg,
+        switchEnvironment,
         requestPasswordReset,
       }}
     >

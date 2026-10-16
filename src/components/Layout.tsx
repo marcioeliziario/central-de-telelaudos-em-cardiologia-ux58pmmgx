@@ -25,15 +25,26 @@ import { APP_CONFIG } from '@/config/appConfig'
 import { PenTool, Settings, Inbox, Clock } from 'lucide-react'
 
 export default function Layout() {
-  const { user, isAuthenticated, currentOrg, currentRole, logout, userOrgs, switchOrg } = useAuth()
+  const {
+    user,
+    isAuthenticated,
+    currentOrg,
+    currentRole,
+    logout,
+    userOrgs,
+    switchOrg,
+    activeEnvironment,
+    switchEnvironment,
+    canSwitchEnvironment,
+  } = useAuth()
   const location = useLocation()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
-  const isCardiologist = currentRole === 'cardiologist'
-  const isAdmin = currentRole === 'admin'
+  const isCardioMode = activeEnvironment === 'cardiologist'
+  const isAdminMode = activeEnvironment === 'admin'
 
   // Itens clínicos estritos para o perfil de cardiologista
-  // (Requisito 1: Painel e fila, Laudos em elaboração, Documentos aguardando assinatura, Minha assinatura e meu certificado, Configurações de conta)
+  // (Fila de exames, laudos em elaboração, aguardando assinatura, minha assinatura e certificado, configurações de conta — SEM auditoria/configurações globais)
   const clinicalNavItems = [
     {
       to: '/',
@@ -68,14 +79,14 @@ export default function Layout() {
     },
   ]
 
-  // Itens gerais/administrativos
+  // Itens estritos para o perfil administrativo da Central
+  // (Painel central, clínicas/contratos, faturamento, auditoria, homologação, monitoramento — SEM fila de ECGs como função principal)
   const adminNavItems = [
     {
       to: '/',
       label: 'Painel Central',
       icon: LayoutDashboard,
       active: location.pathname === '/',
-      badge: currentRole ? currentRole.replace('_', ' ') : undefined,
     },
     {
       to: '/auditoria',
@@ -109,8 +120,8 @@ export default function Layout() {
     },
   ]
 
-  // Menu visível conforme permissões do papel
-  const navItems = isCardiologist ? clinicalNavItems : adminNavItems
+  // Menu visível estritamente conforme o ambiente ativo selecionado
+  const navItems = isCardioMode ? clinicalNavItems : adminNavItems
 
   const getRoleLabel = (role: string | null) => {
     switch (role) {
@@ -157,34 +168,83 @@ export default function Layout() {
           {/* ÁREA DE CONTROLE DE SESSÃO E ORGANIZAÇÃO */}
           <div className="flex items-center gap-3 shrink-0">
             {isAuthenticated && user ? (
-              <div className="flex items-center gap-3">
-                {/* Seletor de Organização */}
+              <div className="flex items-center gap-2.5 sm:gap-3">
+                {/* SELETOR ELEGANTE "ALTERNAR AMBIENTE" (Dr. Márcio / Multi-Perfil) */}
+                {canSwitchEnvironment && (
+                  <div className="flex items-center bg-[#F7F6F4] p-0.5 rounded-lg border border-[#E3E6E8] shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => switchEnvironment('admin')}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                        isAdminMode
+                          ? 'bg-white text-[#2F3942] shadow-xs border border-[#E3E6E8]'
+                          : 'text-[#6F7780] hover:text-[#2F3942]'
+                      }`}
+                      title="Alternar para o ambiente de Gestão e Administração da Central"
+                    >
+                      <ShieldCheck
+                        className={`w-3.5 h-3.5 ${isAdminMode ? 'text-[#4A90D9]' : 'text-[#6F7780]'}`}
+                      />
+                      <span className="hidden md:inline">Administração</span>
+                      <span className="md:hidden">Admin</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => switchEnvironment('cardiologist')}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
+                        isCardioMode
+                          ? 'bg-[#4A90D9] text-white shadow-xs'
+                          : 'text-[#6F7780] hover:text-[#2F3942]'
+                      }`}
+                      title="Alternar para o ambiente de Eletrocardiografia e Laudos Médicos"
+                    >
+                      <Activity
+                        className={`w-3.5 h-3.5 ${isCardioMode ? 'text-white' : 'text-[#6F7780]'}`}
+                      />
+                      <span className="hidden md:inline">Cardiologia</span>
+                      <span className="md:hidden">Laudos</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Seletor de Organização (apenas se houver mais de uma) */}
                 {userOrgs.length > 1 && (
-                  <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F7F6F4] border border-[#E3E6E8] text-xs">
+                  <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F7F6F4] border border-[#E3E6E8] text-xs">
                     <Building2 className="w-3.5 h-3.5 text-[#6F7780]" />
                     <select
                       value={currentOrg?.id || ''}
                       onChange={(e) => switchOrg(e.target.value)}
                       aria-label="Selecionar Organização Ativa"
-                      className="bg-transparent text-[#2F3942] font-medium cursor-pointer focus:outline-none"
+                      className="bg-transparent text-[#2F3942] font-medium cursor-pointer focus:outline-none max-w-[130px] truncate"
                     >
                       {userOrgs.map((uo) => (
                         <option key={uo.id} value={uo.organization_id}>
-                          {uo.expand?.organization_id?.name || 'Organização'}
+                          {uo.expand?.organization_id?.trade_name ||
+                            uo.expand?.organization_id?.name ||
+                            'Organização'}
                         </option>
                       ))}
                     </select>
                   </div>
                 )}
 
-                {/* Identificação Médica do Usuário Logado */}
+                {/* Identificação Médica do Usuário e Badge do Ambiente Ativo */}
                 <div className="text-right hidden sm:block border-l border-[#E3E6E8] pl-3 py-0.5">
                   <div className="text-xs font-bold text-[#2F3942] truncate max-w-[170px]">
                     {user.name || user.email}
                   </div>
-                  <div className="text-[11px] text-[#6F7780] font-medium flex items-center justify-end gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#4A90D9]" />
-                    <span>{getRoleLabel(currentRole)}</span>
+                  <div className="text-[11px] text-[#6F7780] font-medium flex items-center justify-end gap-1.5 mt-0.5">
+                    <Badge
+                      variant="outline"
+                      className={`text-[9px] px-1.5 py-0 font-medium ${
+                        isAdminMode
+                          ? 'bg-slate-100 text-slate-800 border-slate-300'
+                          : 'bg-blue-50 text-[#0E4C92] border-blue-200'
+                      }`}
+                    >
+                      {isAdminMode ? 'Ambiente Admin' : 'Ambiente Cardiologia'}
+                    </Badge>
                   </div>
                 </div>
 
@@ -192,7 +252,7 @@ export default function Layout() {
                   onClick={logout}
                   size="sm"
                   variant="outline"
-                  className="h-8 px-3 text-xs text-[#6F7780] hover:text-red-700 hover:bg-red-50 hover:border-red-200 border-[#E3E6E8] rounded-md gap-1.5 font-medium transition-colors"
+                  className="h-8 px-2.5 sm:px-3 text-xs text-[#6F7780] hover:text-red-700 hover:bg-red-50 hover:border-red-200 border-[#E3E6E8] rounded-md gap-1.5 font-medium transition-colors"
                   title="Sair do sistema com segurança"
                 >
                   <LogOut className="w-3.5 h-3.5" />
@@ -214,8 +274,11 @@ export default function Layout() {
         {/* NAVEGAÇÃO LATERAL (DESKTOP) */}
         <aside className="hidden lg:block w-64 shrink-0 space-y-4">
           <div className="bg-white rounded-xl border border-[#E3E6E8] p-3 shadow-[0_1px_3px_rgba(47,57,66,0.03)]">
-            <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#6F7780]">
-              {isCardiologist ? 'Operação Clínica' : 'Módulos do Sistema'}
+            <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#6F7780] flex items-center justify-between">
+              <span>{isCardioMode ? 'Operação Clínica' : 'Módulos da Central'}</span>
+              <span className="text-[10px] font-normal text-[#4A90D9]">
+                {isCardioMode ? 'ECG' : 'Admin'}
+              </span>
             </div>
             <nav className="space-y-1">
               {navItems.map((item) => {
@@ -334,7 +397,7 @@ export default function Layout() {
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-4 text-xs text-[#A2ABB3] shrink-0">
-            {isAdmin && (
+            {isAdminMode && (
               <div className="flex items-center gap-2">
                 <Link
                   to="/admin/teste-assinatura"

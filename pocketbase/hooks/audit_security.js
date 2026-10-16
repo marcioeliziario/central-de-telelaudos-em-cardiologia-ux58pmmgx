@@ -716,21 +716,29 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
   }
 
   // Verificar se o cardiologista responsável possui assinatura manuscrita cadastrada e ativa
+  // IMPORTANTE: Assinatura só é estampada se o registro estiver formalmente ATIVO (is_active = true)
+  // E o perfil do médico estiver igualmente ativo (doctors.is_active = true).
   let docSignatureImage = null
   let signatureRecord = null
-  try {
-    const sigs = $app.findRecordsByFilter(
-      'doctor_signatures',
-      `user_id = '${targetDoctorUserId}' && is_active = true`,
-      '-created',
-      1,
-      0,
-    )
-    if (sigs.length > 0) {
-      signatureRecord = sigs[0]
-      docSignatureImage = signatureRecord.getString('image_data_uri')
-    }
-  } catch (_) {}
+  const isDoctorProfileActive = doctor ? doctor.getBool('is_active') : true
+  if (isDoctorProfileActive) {
+    try {
+      const sigs = $app.findRecordsByFilter(
+        'doctor_signatures',
+        `user_id = '${targetDoctorUserId}' && is_active = true`,
+        '-created',
+        1,
+        0,
+      )
+      if (sigs.length > 0) {
+        const candidateSig = sigs[0]
+        if (candidateSig.getBool('is_active')) {
+          signatureRecord = candidateSig
+          docSignatureImage = candidateSig.getString('image_data_uri')
+        }
+      }
+    } catch (_) {}
+  }
 
   // Helpers de escape de texto e quebra de linha locais
   const escapePdfText = (str) => {
@@ -1741,21 +1749,29 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
   }
 
   // Buscar assinatura ativa do médico responsável
+  // Regra de segurança: Se o médico estiver desativado no cadastro ou sua assinatura
+  // estiver desativada (is_active = false) ou limpa, NÃO estampar nenhuma assinatura gráfica.
   let docSignatureImage = null
   let signatureRecord = null
-  try {
-    const sigs = $app.findRecordsByFilter(
-      'doctor_signatures',
-      `user_id = '${targetDocUserId}' && is_active = true`,
-      '-created',
-      1,
-      0,
-    )
-    if (sigs.length > 0) {
-      signatureRecord = sigs[0]
-      docSignatureImage = signatureRecord.getString('image_data_uri')
-    }
-  } catch (_) {}
+  const isDocRecordActive = doctor ? doctor.getBool('is_active') : true
+  if (isDocRecordActive) {
+    try {
+      const sigs = $app.findRecordsByFilter(
+        'doctor_signatures',
+        `user_id = '${targetDocUserId}' && is_active = true`,
+        '-created',
+        1,
+        0,
+      )
+      if (sigs.length > 0) {
+        const candidateSig = sigs[0]
+        if (candidateSig.getBool('is_active')) {
+          signatureRecord = candidateSig
+          docSignatureImage = candidateSig.getString('image_data_uri')
+        }
+      }
+    } catch (_) {}
+  }
 
   // Recuperar binário do storage privado ou da URI
   let sigBinaryBytes = []
@@ -4378,4 +4394,38 @@ onRecordAuthRequest((e) => {
   } catch (err) {
     console.log('Falha ao registrar log de login:', err)
   }
+})
+
+// Auditoria para ativação/desativação de assinaturas manuscritas e médicos
+onRecordAfterUpdateSuccess((e) => {
+  try {
+    const colName = e.record.collection().name
+    if (colName === 'doctor_signatures') {
+      const orig = e.record.original()
+      if (orig) {
+        const wasActive = orig.getBool('is_active')
+        const nowActive = e.record.getBool('is_active')
+        if (wasActive !== nowActive) {
+          const auditCol = $app.findCollectionByNameOrId('audit_logs')
+          const auditRec = new Record(auditCol)
+          if (e.auth) {
+            auditRec.set('user_id', e.auth.id)
+          }
+          auditRec.set(
+            'action',
+            nowActive ? 'DOCTOR_SIGNATURE_ACTIVATED' : 'DOCTOR_SIGNATURE_DEACTIVATED',
+          )
+          auditRec.set('target_collection', 'doctor_signatures')
+          auditRec.set('target_id', e.record.id)
+          auditRec.set('status', 'SUCCESS')
+          auditRec.set(
+            'details',
+            `Status da assinatura manuscrita (ID: ${e.record.id}, user_id: ${e.record.getString('user_id')}) alterado para ${nowActive ? 'ATIVO' : 'DESATIVADO'}.`,
+          )
+          $app.save(auditRec)
+        }
+      }
+    }
+  } catch (_) {}
+  e.next()
 })

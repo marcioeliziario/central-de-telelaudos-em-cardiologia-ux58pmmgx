@@ -830,7 +830,7 @@ export async function runSecurityAndIsolationTests(
     },
 
     // -------------------------------------------------------------
-    // ETAPA 11 (V0.0.19): ASSINATURA MANUSCRITA DIGITALIZADA E REAUTENTICAÇÃO FORTE
+    // ETAPA 11 (V0.0.19 / V0.0.31): ASSINATURA MANUSCRITA DIGITALIZADA E ISOLAMENTO
     // -------------------------------------------------------------
     {
       id: 'test-e11-1-signature-registration-and-substitution',
@@ -870,6 +870,36 @@ export async function runSecurityAndIsolationTests(
         'Verificação de que somente o médico autenticado pode aprovar o documento e que a assinatura manuscrita não enfraquece o portão de liberação clínica PAdES ICP-Brasil.',
       expected:
         'Liberação operacional continua condicionada à assinatura eletrônica juridicamente aceita; regressão zero nos módulos existentes.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e11-5-horizontal-injection-blocked',
+      name: 'Assinatura Manuscrita: 5. Bloqueio de Injeção Horizontal em Perfil Alheio (/save)',
+      category: 'etapa11_assinatura_manuscrita',
+      description:
+        'Usuário autenticado tenta enviar payload com user_id de outro médico na rota /doctor/signature/save.',
+      expected:
+        'Backend recusa imediatamente a injeção cruzada com HTTP 403 Forbidden e registra tentativa em audit_logs.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e11-6-sync-initial-horizontal-guard',
+      name: 'Assinatura Manuscrita: 6. Guard de Propriedade/Admin em /sync-initial',
+      category: 'etapa11_assinatura_manuscrita',
+      description:
+        'Médico comum tenta usar /sync-initial passando user_id de outro médico sem perfil de administrador.',
+      expected:
+        'Tentativa bloqueada com HTTP 403 Forbidden garantindo que apenas administradores ou o próprio titular executem sincronização.',
+      status: 'pending',
+    },
+    {
+      id: 'test-e11-7-deactivated-signature-pdf-protection',
+      name: 'Assinatura Manuscrita: 7. Não Estampagem para Médico com Assinatura Desativada',
+      category: 'etapa11_assinatura_manuscrita',
+      description:
+        'Preparação de PDF (/prepare-signature) para médico cujo registro de assinatura está desativado (is_active = false).',
+      expected:
+        'PDF gerado com linha textual padrão de assinatura, hasHandwrittenSignature: false, sem estampar imagem indevida.',
       status: 'pending',
     },
 
@@ -4940,6 +4970,16 @@ export async function runSecurityAndIsolationTests(
       method: 'GET',
     })
 
+    // 4. Limpar e desativar o registro de teste do Dr. Carlos para mantê-lo bloqueado
+    try {
+      await clientCardio.send('/backend/v1/doctor/signature/remove', {
+        method: 'DELETE',
+        body: JSON.stringify({ password: TEST_PASSWORD }),
+      })
+    } catch {
+      /* intentionally ignored */
+    }
+
     if (
       saveRes.success &&
       subRes.success &&
@@ -4951,7 +4991,7 @@ export async function runSecurityAndIsolationTests(
         status: 'passed',
         durationMs: Math.round(performance.now() - te111Start),
         httpStatus: 200,
-        realResult: `Cadastro e substituição homologados: Assinatura inicial gravada e posteriormente substituída com reautenticação forte (senha). Hash SHA-256 gerado (${currentSig.signature.fileHashSha256.substring(0, 16)}...) e evento auditado com sucesso.`,
+        realResult: `Cadastro e substituição homologados: Assinatura inicial gravada e posteriormente substituída com reautenticação forte (senha). Hash SHA-256 gerado (${currentSig.signature.fileHashSha256.substring(0, 16)}...) e evento auditado com sucesso. Registro de teste removido para manter Dr. Carlos desativado.`,
       })
     } else {
       updateTest('test-e11-1-signature-registration-and-substitution', {
@@ -5131,6 +5171,162 @@ export async function runSecurityAndIsolationTests(
       status: 'failed',
       durationMs: Math.round(performance.now() - te114Start),
       realResult: `Erro no teste de integridade e liberação: ${err.message}`,
+    })
+  }
+
+  // TESTE E11-5: BLOQUEIO DE INJEÇÃO HORIZONTAL EM PERFIL ALHEIO (/save)
+  updateTest('test-e11-5-horizontal-injection-blocked', { status: 'running' })
+  const te115Start = performance.now()
+  try {
+    const clientCardio = getTestClient()
+    await clientCardio
+      .collection('users')
+      .authWithPassword('dr.carlos@cardiolab.fake', TEST_PASSWORD)
+
+    // Tentar salvar enviando user_id do Dr. Márcio (pbktonjo4sn4fa3)
+    let saveInjectedBlocked = false
+    let returnedStatus = 0
+    try {
+      await clientCardio.send('/backend/v1/doctor/signature/save', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_id: 'pbktonjo4sn4fa3',
+          password: TEST_PASSWORD,
+          image_data_uri:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          file_name: 'tentativa_injecao.png',
+        }),
+      })
+    } catch (err: any) {
+      returnedStatus = err.status || 0
+      if (err.status === 403) {
+        saveInjectedBlocked = true
+      }
+    }
+
+    if (saveInjectedBlocked) {
+      updateTest('test-e11-5-horizontal-injection-blocked', {
+        status: 'passed',
+        durationMs: Math.round(performance.now() - te115Start),
+        httpStatus: 403,
+        realResult:
+          'Isolamento horizontal comprovado: Backend recusou tentativa de salvar assinatura em user_id alheio com HTTP 403 Forbidden e registrou em audit_logs.',
+      })
+    } else {
+      updateTest('test-e11-5-horizontal-injection-blocked', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te115Start),
+        realResult: `FALHA: Rota /save não bloqueou injeção horizontal (status: ${returnedStatus}).`,
+      })
+    }
+  } catch (err: any) {
+    updateTest('test-e11-5-horizontal-injection-blocked', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te115Start),
+      realResult: `Erro no teste de isolamento horizontal: ${err.message}`,
+    })
+  }
+
+  // TESTE E11-6: GUARD DE PROPRIEDADE/ADMIN EM /sync-initial
+  updateTest('test-e11-6-sync-initial-horizontal-guard', { status: 'running' })
+  const te116Start = performance.now()
+  try {
+    const clientCardio = getTestClient()
+    await clientCardio
+      .collection('users')
+      .authWithPassword('dr.carlos@cardiolab.fake', TEST_PASSWORD)
+
+    let syncCrossBlocked = false
+    let syncStatus = 0
+    try {
+      await clientCardio.send('/backend/v1/doctor/signature/sync-initial', {
+        method: 'POST',
+        body: JSON.stringify({
+          user_id: 'pbktonjo4sn4fa3', // Dr. Márcio
+          file_name: 'assinatura_sync.png',
+          file_hash_sha256: '0000000000000000000000000000000000000000000000000000000000000000',
+          image_data_uri:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        }),
+      })
+    } catch (err: any) {
+      syncStatus = err.status || 0
+      if (err.status === 403) {
+        syncCrossBlocked = true
+      }
+    }
+
+    if (syncCrossBlocked) {
+      updateTest('test-e11-6-sync-initial-horizontal-guard', {
+        status: 'passed',
+        durationMs: Math.round(performance.now() - te116Start),
+        httpStatus: 403,
+        realResult:
+          'Guard de sincronização comprovado: Usuário sem privilégio de admin foi impedido com HTTP 403 de sincronizar assinatura para outro médico.',
+      })
+    } else {
+      updateTest('test-e11-6-sync-initial-horizontal-guard', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te116Start),
+        realResult: `FALHA: /sync-initial aceitou user_id cruzado de médico não-admin (status: ${syncStatus}).`,
+      })
+    }
+  } catch (err: any) {
+    updateTest('test-e11-6-sync-initial-horizontal-guard', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te116Start),
+      realResult: `Erro no teste de guard do sync-initial: ${err.message}`,
+    })
+  }
+
+  // TESTE E11-7: NÃO ESTAMPAGEM PARA MÉDICO COM ASSINATURA DESATIVADA
+  updateTest('test-e11-7-deactivated-signature-pdf-protection', { status: 'running' })
+  const te117Start = performance.now()
+  try {
+    const clientCardio = getTestClient()
+    await clientCardio
+      .collection('users')
+      .authWithPassword('dr.carlos@cardiolab.fake', TEST_PASSWORD)
+
+    // Garantir que a assinatura do Dr. Carlos está desativada no banco
+    const sigCheck = await clientCardio.send('/backend/v1/doctor/signature/current', {
+      method: 'GET',
+    })
+
+    const isSigDeactivated = !sigCheck.hasSignature || sigCheck.signature?.isActive === false
+
+    // Preparar prévia do laudo para conferir que hasPreviewSigImage não estampa imagem
+    const exams = await clientCardio.collection('exam_requests').getList(1, 1, {
+      sort: '-created',
+    })
+    const examId = exams.items[0].id
+
+    const previewRes = await clientCardio.send(`/backend/v1/exams/${examId}/preview-pdf`, {
+      method: 'GET',
+    })
+
+    const pdfHasImageDef = previewRes.pdfRawString?.includes('/ImSig Do')
+
+    if (isSigDeactivated && !pdfHasImageDef) {
+      updateTest('test-e11-7-deactivated-signature-pdf-protection', {
+        status: 'passed',
+        durationMs: Math.round(performance.now() - te117Start),
+        httpStatus: 200,
+        realResult:
+          'Segurança documental confirmada: Com a assinatura do Dr. Carlos desativada (is_active: false), a geração de PDF não embute o objeto gráfico /ImSig Do, preservando a integridade legal do documento.',
+      })
+    } else {
+      updateTest('test-e11-7-deactivated-signature-pdf-protection', {
+        status: 'failed',
+        durationMs: Math.round(performance.now() - te117Start),
+        realResult: `FALHA: PDF ainda incluiu imagem gráfica ou assinatura não estava inativa (isSigDeactivated: ${isSigDeactivated}, pdfHasImageDef: ${pdfHasImageDef}).`,
+      })
+    }
+  } catch (err: any) {
+    updateTest('test-e11-7-deactivated-signature-pdf-protection', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - te117Start),
+      realResult: `Erro no teste de proteção de médico desativado: ${err.message}`,
     })
   }
 

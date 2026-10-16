@@ -935,6 +935,9 @@ routerAdd('POST', '/backend/v1/auth/reauth', (e) => {
 
 routerAdd('POST', '/backend/v1/doctor/signature/sync-initial', (e) => {
   // Rota administrativa interna para sincronizar a assinatura processada para médicos autorizados
+  // Proteção contra vulnerabilidade de acesso horizontal:
+  // Um usuário comum só pode sincronizar a SUA PRÓPRIA assinatura (targetUserId === authRecord.id).
+  // Apenas Administradores do sistema podem sincronizar assinaturas de terceiros.
   const authRecord = e.auth
   if (!authRecord) {
     throw new ForbiddenError('Acesso restrito a usuários autenticados.')
@@ -945,10 +948,41 @@ routerAdd('POST', '/backend/v1/doctor/signature/sync-initial', (e) => {
     body = e.requestInfo().body || {}
   } catch (_) {}
 
-  const targetUserId = body.user_id || authRecord.id
+  const targetUserId = body.user_id ? String(body.user_id).trim() : authRecord.id
   const fileName = body.file_name || 'assinatura-medica-principal-transparente.png'
   const fileHash = body.file_hash_sha256 || ''
   const imageDataUri = body.image_data_uri || ''
+
+  // Guard de propriedade / admin rígido
+  if (targetUserId !== authRecord.id) {
+    const callerOrgs = $app.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${authRecord.id}' && is_active = true`,
+      '',
+      50,
+      0,
+    )
+    const isCallerAdmin = callerOrgs.some((uo) => uo.getString('role') === 'admin')
+    if (!isCallerAdmin) {
+      try {
+        const auditCol = $app.findCollectionByNameOrId('audit_logs')
+        const auditRec = new Record(auditCol)
+        auditRec.set('user_id', authRecord.id)
+        auditRec.set('action', 'DOCTOR_SIGNATURE_SYNC_UNAUTHORIZED_TARGET')
+        auditRec.set('target_collection', 'doctor_signatures')
+        auditRec.set('target_id', targetUserId)
+        auditRec.set('status', 'REJECTED')
+        auditRec.set(
+          'details',
+          `Tentativa de sincronização horizontal de assinatura bloqueada: usuário ${authRecord.id} tentou gravar no perfil ${targetUserId} sem permissão de administrador.`,
+        )
+        $app.save(auditRec)
+      } catch (_) {}
+      throw new ForbiddenError(
+        'Acesso negado: você não tem permissão para sincronizar assinatura de outro usuário.',
+      )
+    }
+  }
 
   if (!imageDataUri || !fileHash) {
     throw new BadRequestError('Dados de imagem e hash são obrigatórios.')
@@ -1105,6 +1139,25 @@ routerAdd('POST', '/backend/v1/doctor/signature/save', (e) => {
 
   if (!imageDataUri) {
     throw new BadRequestError('A imagem da assinatura manuscrita (PNG ou JPEG) é obrigatória.')
+  }
+
+  // 0. GUARD DE PROPRIEDADE RÍGIDO: Impede injeção de target_user_id ou doctor_id de terceiros
+  if (body.user_id && String(body.user_id).trim() !== authRecord.id) {
+    try {
+      const auditCol = $app.findCollectionByNameOrId('audit_logs')
+      const auditRec = new Record(auditCol)
+      auditRec.set('user_id', authRecord.id)
+      auditRec.set('action', 'DOCTOR_SIGNATURE_SAVE_FORBIDDEN_TARGET')
+      auditRec.set('target_collection', 'doctor_signatures')
+      auditRec.set('target_id', String(body.user_id))
+      auditRec.set('status', 'REJECTED')
+      auditRec.set(
+        'details',
+        `Tentativa de salvar assinatura médica no perfil de outro usuário (${body.user_id}) bloqueada com HTTP 403.`,
+      )
+      $app.save(auditRec)
+    } catch (_) {}
+    throw new ForbiddenError('Não é permitido salvar assinatura em perfil de outro usuário.')
   }
 
   // 1. REAUTENTICAÇÃO OBRIGATÓRIA COM SENHA E TOTP (SE HABILITADO)

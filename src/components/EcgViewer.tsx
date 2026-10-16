@@ -52,6 +52,13 @@ export default function EcgViewer({
       })
     : ''
 
+  // Acesso seguro aos metadados de calibração opcionais não previstos na coleção estrita
+  const examRecord = exam as unknown as Record<string, unknown>
+  const calibrationSpeed =
+    typeof examRecord.calibration_speed === 'string' ? examRecord.calibration_speed : undefined
+  const calibrationGain =
+    typeof examRecord.calibration_gain === 'string' ? examRecord.calibration_gain : undefined
+
   // Resetar zoom e rotação quando o exame muda
   useEffect(() => {
     setZoom(1)
@@ -330,12 +337,10 @@ export default function EcgViewer({
           )}
         </div>
 
-        <div className="flex items-center gap-2 text-[#6F7780]">
+        <div className="flex flex-wrap items-center gap-2 text-[#6F7780]">
           <span>
-            {exam.calibration_speed
-              ? `Velocidade: ${exam.calibration_speed}`
-              : 'Velocidade: não informada'}{' '}
-            • {exam.calibration_gain ? `Ganho: ${exam.calibration_gain}` : 'Ganho: não informado'}
+            {calibrationSpeed ? `Velocidade: ${calibrationSpeed}` : 'Velocidade: não informada'} •{' '}
+            {calibrationGain ? `Ganho: ${calibrationGain}` : 'Ganho: não informado'}
           </span>
           {isMagnifierActive && (
             <span className="text-[#4A90D9] font-medium">• Lupa ativa (2.5x)</span>

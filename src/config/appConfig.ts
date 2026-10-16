@@ -3,8 +3,8 @@
  * Evita strings fixas desatualizadas espalhadas pelos componentes.
  */
 export const APP_CONFIG = {
-  version: '0.0.29',
-  versionLabel: 'v0.0.29',
+  version: '0.0.30',
+  versionLabel: 'v0.0.30',
   stageName: 'Etapa Design 2 — Reorganização da Experiência Clínica',
   sessionDurationLabel: '12 horas (43.200s)',
   sessionDurationSecs: 43200,

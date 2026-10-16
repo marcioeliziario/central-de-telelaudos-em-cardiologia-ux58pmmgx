@@ -378,11 +378,10 @@ export function CardiologistDashboard() {
         {/* Lado a Lado: Visualizador de ECG (aprox 60%) + Editor SBC (aprox 40%) com Redimensionamento Arrastável */}
         <div className="hidden lg:block">
           <ResizablePanelGroup
-            orientation="horizontal"
+            direction="horizontal"
             className="min-h-[820px] rounded-xl border border-[#E3E6E8] bg-white shadow-xs overflow-hidden"
           >
             <ResizablePanel
-              orientation="horizontal"
               defaultSize={60}
               minSize={35}
               maxSize={75}
@@ -397,7 +396,6 @@ export function CardiologistDashboard() {
               className="bg-[#E3E6E8] hover:bg-[#4A90D9] transition-colors"
             />
             <ResizablePanel
-              orientation="horizontal"
               defaultSize={40}
               minSize={25}
               maxSize={65}

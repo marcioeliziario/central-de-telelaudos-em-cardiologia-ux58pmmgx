@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T00:04:29.457Z",
+  "generatedAt": "2026-10-16T00:18:56.124Z",
   "collections": [
     {
       "name": "users",
@@ -2666,6 +2666,262 @@
       "indexes": [
         "CREATE UNIQUE INDEX idx_doc_sig_user ON doctor_signatures (user_id)",
         "CREATE INDEX idx_doc_sig_hash ON doctor_signatures (file_hash_sha256)"
+      ]
+    },
+    {
+      "name": "signing_providers",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\"",
+        "view": "@request.auth.id != \"\"",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "provider_key",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "display_name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "adapter_type",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "standard",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "is_active",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "is_multiplexed",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "supported_pscs",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "supported_scopes",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "min_lifetime_seconds",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "max_lifetime_seconds",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "base_url",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "documentation_url",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_sign_prov_key ON signing_providers (provider_key)"]
+    },
+    {
+      "name": "signing_sessions",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != \"\" && user_id = @request.auth.id",
+        "view": "@request.auth.id != \"\" && user_id = @request.auth.id",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "doctor_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "doctors"
+        },
+        {
+          "name": "provider_key",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "psc_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "state_hash",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "state_used",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "state_expires_at",
+          "type": "date",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "session_token_ciphertext",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "session_token_tag",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "scope",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["single_signature", "multi_signature", "signature_session"]
+        },
+        {
+          "name": "lifetime_seconds",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "expires_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "signature_ready",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "certificate_cn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "certificate_issuer",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "certificate_subject_cpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "certificate_raw_base64",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["STATE_EMITTED", "AUTHORIZED", "REVOKED", "EXPIRED", "FAILED"]
+        },
+        {
+          "name": "is_simulated",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_sign_sess_user ON signing_sessions (user_id)",
+        "CREATE INDEX idx_sign_sess_state ON signing_sessions (state_hash)",
+        "CREATE INDEX idx_sign_sess_status ON signing_sessions (status)"
       ]
     }
   ]

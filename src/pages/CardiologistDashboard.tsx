@@ -58,6 +58,7 @@ import { MfaSecurityCard } from '@/components/MfaSecurityCard'
 import { DoctorSignatureCard } from '@/components/DoctorSignatureCard'
 import NotificationsPopover from '@/components/NotificationsPopover'
 import { BirdIdSigningModal } from '@/components/BirdIdSigningModal'
+import { MultiProviderSigningCard } from '@/components/MultiProviderSigningCard'
 
 export function CardiologistDashboard() {
   const { user } = useAuth()
@@ -449,6 +450,9 @@ export function CardiologistDashboard() {
 
       {/* REQUISITO: Card 'Minha Assinatura' no Painel do Cardiologista */}
       <DoctorSignatureCard />
+
+      {/* REQUISITO ETAPA E1: Card de Assinatura Digital Multiprovedor (Integra Bry + Bird ID Pro) */}
+      <MultiProviderSigningCard />
 
       {/* Painel Integrado de MFA do Médico Laudador (Etapa 9A) */}
       <MfaSecurityCard />

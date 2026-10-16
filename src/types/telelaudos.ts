@@ -680,3 +680,97 @@ export interface DoctorSignature {
     }
   }
 }
+
+// -------------------------------------------------------------
+// ETAPA E1: ARQUITETURA MULTIPROVEDOR DE ASSINATURA DIGITAL
+// -------------------------------------------------------------
+
+export type SigningAdapterType = 'INTEGRA_BRY' | 'BIRDID_CESS'
+export type SigningScope = 'single_signature' | 'multi_signature' | 'signature_session'
+export type SigningSessionStatus = 'STATE_EMITTED' | 'AUTHORIZED' | 'REVOKED' | 'EXPIRED' | 'FAILED'
+
+export interface SigningPscItem {
+  id: string
+  name: string
+  available?: boolean
+}
+
+export interface MultiSigningProvider {
+  id: string
+  providerKey: string
+  displayName: string
+  adapterType: SigningAdapterType
+  standard: string
+  isMultiplexed: boolean
+  supportedPscs: SigningPscItem[]
+  supportedScopes: SigningScope[]
+  minLifetimeSeconds: number
+  maxLifetimeSeconds: number
+  baseUrl: string
+  documentationUrl: string
+  isCommercialConfigured: boolean
+  status: 'ATIVO' | 'STANDBY_HOMOLOGACAO'
+  notes: string
+}
+
+export interface SigningSessionActiveResponse {
+  success: boolean
+  hasActiveSession: boolean
+  isExpired?: boolean
+  message?: string
+  sessionId?: string
+  providerKey?: string
+  pscId?: string
+  scope?: SigningScope
+  signatureReady?: boolean
+  expiresAt?: string
+  remainingSeconds?: number
+  certificate?: {
+    cn: string
+    issuer: string
+    cpf: string
+  }
+  isSimulated?: boolean
+}
+
+export interface SigningSessionInitResponse {
+  success: boolean
+  sessionId: string
+  providerKey: string
+  pscId: string
+  scope: SigningScope
+  lifetimeSeconds: number
+  state: string
+  stateExpiresAt: string
+  authUrl: string
+  isSimulated: boolean
+  message?: string
+}
+
+export interface SigningSessionCallbackResponse {
+  success: boolean
+  sessionId: string
+  providerKey: string
+  status: SigningSessionStatus
+  signatureReady: boolean
+  expiresAt: string
+  certificate: {
+    cn: string
+    issuer: string
+    cpf: string
+  }
+  isSimulated: boolean
+  message: string
+}
+
+export interface SignDocumentResponse {
+  success: boolean
+  signatureId: string
+  transactionId: string
+  tcn?: string
+  status: SignatureStatus
+  signedHashSha256: string
+  isClinicallyReleased: boolean
+  isSimulated: boolean
+  message: string
+}

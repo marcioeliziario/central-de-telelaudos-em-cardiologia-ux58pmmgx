@@ -218,7 +218,12 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
     try {
       let blob: Blob
       if (pdfData && pdfData.length > 0) {
-        blob = new Blob([pdfData], { type: 'application/pdf' })
+        // Usa buffer para compatibilidade estrita de ArrayBuffer com BlobPart
+        const arrayBuffer = pdfData.buffer.slice(
+          pdfData.byteOffset,
+          pdfData.byteOffset + pdfData.byteLength,
+        ) as ArrayBuffer
+        blob = new Blob([arrayBuffer], { type: 'application/pdf' })
       } else if (pdfUrl) {
         // Fallback para URL existente
         const a = document.createElement('a')

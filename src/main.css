@@ -8,6 +8,14 @@
 @tailwind utilities;
 
 @layer base {
+  html,
+  body {
+    min-height: 100%;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
   * {
     font-family:
       'IBM Plex Sans',

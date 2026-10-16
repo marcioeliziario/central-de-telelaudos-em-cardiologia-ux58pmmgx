@@ -379,18 +379,18 @@ export function CardiologistDashboard() {
         </div>
 
         {/* Lado a Lado: Visualizador de ECG (aprox 60%) + Editor SBC (aprox 40%) com Redimensionamento Arrastável */}
-        <div className="hidden lg:block">
+        <div className="hidden xl:block">
           <ResizablePanelGroup
             direction="horizontal"
-            className="min-h-[820px] rounded-xl border border-[#E3E6E8] bg-white shadow-xs overflow-hidden"
+            className="min-h-[780px] max-h-[calc(100dvh-130px)] rounded-xl border border-[#E3E6E8] bg-white shadow-xs"
           >
             <ResizablePanel
-              defaultSize={60}
+              defaultSize={58}
               minSize={35}
               maxSize={75}
-              className="p-3 bg-[#F7F6F4]/30 flex flex-col"
+              className="p-3 bg-[#F7F6F4]/30 flex flex-col min-h-0 overflow-y-auto"
             >
-              <div className="h-[790px]">
+              <div className="min-h-[680px] flex-1">
                 <EcgViewer exam={activeExam} />
               </div>
             </ResizablePanel>
@@ -399,10 +399,10 @@ export function CardiologistDashboard() {
               className="bg-[#E3E6E8] hover:bg-[#4A90D9] transition-colors"
             />
             <ResizablePanel
-              defaultSize={40}
+              defaultSize={42}
               minSize={25}
               maxSize={65}
-              className="p-3 overflow-y-auto max-h-[820px]"
+              className="p-3 overflow-y-auto min-h-0"
             >
               <ReportEditor
                 exam={activeExam}
@@ -419,22 +419,24 @@ export function CardiologistDashboard() {
           </ResizablePanelGroup>
         </div>
 
-        {/* Layout Empilhado para Mobile / Tablet estreito */}
-        <div className="lg:hidden space-y-4">
-          <div className="h-[520px]">
+        {/* Layout Empilhado Verticalmente com rolagem fluida para Telas Estreitas / Tablets / Iframe Skip */}
+        <div className="xl:hidden space-y-6">
+          <div className="min-h-[520px] rounded-xl border border-[#E3E6E8] bg-white p-3 shadow-xs">
             <EcgViewer exam={activeExam} />
           </div>
-          <ReportEditor
-            exam={activeExam}
-            onReportSubmitted={() => {
-              setActiveExam(null)
-              loadInitialData()
-            }}
-            onReturnRequested={() => {
-              setActiveExam(null)
-              loadInitialData()
-            }}
-          />
+          <div className="rounded-xl border border-[#E3E6E8] bg-white p-3 shadow-xs">
+            <ReportEditor
+              exam={activeExam}
+              onReportSubmitted={() => {
+                setActiveExam(null)
+                loadInitialData()
+              }}
+              onReturnRequested={() => {
+                setActiveExam(null)
+                loadInitialData()
+              }}
+            />
+          </div>
         </div>
       </div>
     )

@@ -253,7 +253,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-5xl w-[95vw] h-[92vh] flex flex-col p-0 gap-0 overflow-hidden bg-[#F7F6F4] border-[#E3E6E8] rounded-xl shadow-2xl">
+      <DialogContent className="max-w-5xl w-[96vw] max-w-[96vw] h-[94dvh] max-h-[94dvh] flex flex-col p-0 gap-0 overflow-hidden bg-[#F7F6F4] border-[#E3E6E8] rounded-xl shadow-2xl">
         {/* Cabeçalho do Visualizador */}
         <DialogHeader className="px-5 py-3.5 bg-white border-b border-[#E3E6E8] flex flex-row items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">

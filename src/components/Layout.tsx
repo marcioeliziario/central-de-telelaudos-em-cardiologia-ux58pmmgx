@@ -141,7 +141,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F7F6F4] text-[#2F3942] antialiased selection:bg-[#4A90D9] selection:text-white">
+    <div className="min-h-screen min-h-[100dvh] flex flex-col bg-[#F7F6F4] text-[#2F3942] antialiased selection:bg-[#4A90D9] selection:text-white">
       {/* CABEÇALHO SUPERIOR SÓBRIO E ELEGANTE */}
       <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-[#E3E6E8] shadow-[0_1px_3px_rgba(47,57,66,0.04)]">
         <div className="max-w-[1360px] mx-auto px-4 sm:px-6 h-18 flex items-center justify-between gap-4">
@@ -376,7 +376,7 @@ export default function Layout() {
         )}
 
         {/* ÁREA DE CONTEÚDO PRINCIPAL */}
-        <main className="flex-1 min-w-0">
+        <main className="flex-1 min-w-0 min-h-0">
           <Outlet />
         </main>
       </div>

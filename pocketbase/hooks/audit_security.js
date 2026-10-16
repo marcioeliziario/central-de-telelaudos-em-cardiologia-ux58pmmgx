@@ -864,20 +864,34 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
   const examDate = exam.getString('exam_date')
     ? new Date(exam.getString('exam_date')).toLocaleDateString('pt-BR')
     : new Date(exam.getString('created')).toLocaleDateString('pt-BR')
-  const doctorName =
+  // Limpeza de nome profissional: remover "(Admin)" e prefixos repetidos
+  let rawDocName =
     authRecord.getString('name') || (doctor ? doctor.getString('notes') : '') || 'Cardiologista'
+  rawDocName = rawDocName.replace(/\s*\(Admin\)/gi, '').trim()
+  if (/^Dr\(a\)\.?\s*/i.test(rawDocName)) {
+    rawDocName = rawDocName.replace(/^Dr\(a\)\.?\s*/i, '').trim()
+  }
+  if (/^Dr\.?\s*/i.test(rawDocName)) {
+    rawDocName = rawDocName.replace(/^Dr\.?\s*/i, '').trim()
+  }
+  const doctorName = rawDocName || 'Márcio Eliziário'
+
   const doctorCrm = doctor ? doctor.getString('crm') : ''
   const doctorCrmState = doctor ? doctor.getString('crm_state') : 'SP'
   const doctorRqe = doctor ? doctor.getString('rqe') : ''
   const doctorCrmLine = doctorCrm
     ? 'CRM: ' + doctorCrm + '/' + doctorCrmState + (doctorRqe ? '  •  RQE: ' + doctorRqe : '')
     : 'Registro profissional não informado na solicitação'
-  const desc =
+
+  // Limpeza de pontuação duplicada
+  let desc = (
     reportData.getString('free_text_description') ||
     'Traçado dentro dos limites da normalidade para a faixa etária.'
-  const concl =
+  ).replace(/\.\.+/g, '.')
+  let concl = (
     reportData.getString('free_text_conclusion') ||
     'Eletrocardiograma sem alterações patológicas significativas.'
+  ).replace(/\.\.+/g, '.')
 
   let ops = []
   ops.push('0.05 0.30 0.57 rg')
@@ -924,12 +938,16 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
   ops.push(`(${escapePdfText('LAUDO DE ELETROCARDIOGRAMA DE 12 DERIVAÇÕES')}) Tj`)
   ops.push('ET')
 
+  // Formatação de data/hora em formato estritamente brasileiro (dd/mm/aaaa, HH:MM)
+  const now = new Date()
+  const emissaoStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} às ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+
   ops.push('0.3 0.3 0.3 rg')
   ops.push('BT')
   ops.push('/F3 8 Tf')
   ops.push('50 735 Td')
   ops.push(
-    `(${escapePdfText('Doc ID: ' + docCode + '  •  Versão: ' + docVersion + '.0 (PRÉVIA)  •  Emissão: ' + new Date().toLocaleString('pt-BR'))}) Tj`,
+    `(${escapePdfText('Doc ID: ' + docCode + '  •  Versão: ' + docVersion + '.0 (PRÉVIA)  •  Emissão: ' + emissaoStr)}) Tj`,
   )
   ops.push('ET')
 
@@ -1186,31 +1204,32 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
     hasPreviewSigImage = true
   }
 
+  // Estrutura vertical limpa e sem colisões no rodapé
   ops.push('0.1 0.1 0.1 rg')
   ops.push('BT')
   ops.push('/F2 10 Tf')
-  ops.push(`45 ${footerY - 8} Td`)
-  ops.push(`(${escapePdfText('Dr(a). ' + doctorName)}) Tj`)
+  ops.push(`45 ${footerY + 8} Td`)
+  ops.push(`(${escapePdfText('Dr. ' + doctorName)}) Tj`)
   ops.push('ET')
 
   ops.push('BT')
   ops.push('/F1 8.5 Tf')
-  ops.push(`45 ${footerY} Td`)
+  ops.push(`45 ${footerY - 4} Td`)
   ops.push(`(${escapePdfText(doctorCrmLine + '  •  Especialidade: Cardiologia')}) Tj`)
   ops.push('ET')
 
   ops.push('BT')
   ops.push('/F1 7.5 Tf')
-  ops.push(`45 ${footerY - 11} Td`)
+  ops.push(`45 ${footerY - 16} Td`)
   ops.push(
-    `(${escapePdfText('Laudo emitido por telemedicina conforme Resolução CFM 2.314/2022 e Diretrizes da Sociedade Brasileira de Cardiologia.')}) Tj`,
+    `(${escapePdfText('Laudo emitido por telemedicina conforme Resolução CFM 2.314/2022 e Diretrizes da SBC.')}) Tj`,
   )
   ops.push('ET')
 
   ops.push('0.4 0.4 0.4 rg')
   ops.push('BT')
-  ops.push('/F2 8 Tf')
-  ops.push(`45 ${footerY - 26} Td`)
+  ops.push('/F2 7.5 Tf')
+  ops.push(`45 ${footerY - 28} Td`)
   ops.push(
     `(${escapePdfText('SITUAÇÃO DO DOCUMENTO: PRÉVIA (NÃO ASSINADO DIGITALMENTE) • SEM VALIDADE COMO LAUDO FINAL.')}) Tj`,
   )
@@ -1218,7 +1237,7 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
 
   ops.push('BT')
   ops.push('/F3 7 Tf')
-  ops.push(`45 ${footerY - 37} Td`)
+  ops.push(`45 ${footerY - 39} Td`)
   ops.push(
     `(${escapePdfText('Código de Verificação: ' + docCode + '  |  Versão: ' + docVersion + '.0  |  SHA-256 Registrado')}) Tj`,
   )
@@ -1531,8 +1550,18 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
   const examDate = exam.getString('exam_date')
     ? new Date(exam.getString('exam_date')).toLocaleDateString('pt-BR')
     : new Date(exam.getString('created')).toLocaleDateString('pt-BR')
-  const doctorName =
+  // Limpeza de nome profissional: remover "(Admin)" e prefixos repetidos
+  let rawDocNamePrep =
     authRecord.getString('name') || (doctor ? doctor.getString('notes') : '') || 'Cardiologista'
+  rawDocNamePrep = rawDocNamePrep.replace(/\s*\(Admin\)/gi, '').trim()
+  if (/^Dr\(a\)\.?\s*/i.test(rawDocNamePrep)) {
+    rawDocNamePrep = rawDocNamePrep.replace(/^Dr\(a\)\.?\s*/i, '').trim()
+  }
+  if (/^Dr\.?\s*/i.test(rawDocNamePrep)) {
+    rawDocNamePrep = rawDocNamePrep.replace(/^Dr\.?\s*/i, '').trim()
+  }
+  const doctorName = rawDocNamePrep || 'Márcio Eliziário'
+
   const doctorCrm = doctor ? doctor.getString('crm') : ''
   const doctorCrmState = doctor ? doctor.getString('crm_state') : 'SP'
   const doctorRqe = doctor ? doctor.getString('rqe') : ''
@@ -1585,12 +1614,16 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
   ops.push(`(${escapePdfText('LAUDO DE ELETROCARDIOGRAMA DE 12 DERIVAÇÕES')}) Tj`)
   ops.push('ET')
 
+  // Formatação de data/hora em formato estritamente brasileiro (dd/mm/aaaa, HH:MM)
+  const nowPrep = new Date()
+  const emissaoStrPrep = `${String(nowPrep.getDate()).padStart(2, '0')}/${String(nowPrep.getMonth() + 1).padStart(2, '0')}/${nowPrep.getFullYear()} às ${String(nowPrep.getHours()).padStart(2, '0')}:${String(nowPrep.getMinutes()).padStart(2, '0')}`
+
   ops.push('0.3 0.3 0.3 rg')
   ops.push('BT')
   ops.push('/F3 8 Tf')
   ops.push('50 735 Td')
   ops.push(
-    `(${escapePdfText('Doc ID: ' + docCode + '  •  Versão: ' + nextVersion + '.0  •  Emissão: ' + new Date().toLocaleString('pt-BR'))}) Tj`,
+    `(${escapePdfText('Doc ID: ' + docCode + '  •  Versão: ' + nextVersion + '.0  •  Emissão: ' + emissaoStrPrep)}) Tj`,
   )
   ops.push('ET')
 
@@ -1836,24 +1869,23 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
 
   // Carimbo / Assinatura Manuscrita Digitalizada do Cardiologista no Rodapé
   // Requisito: centralizada sobre o nome do médico, CRM/UF e RQE (quando aplicável).
-  // Exibir SOMENTE: imagem da assinatura manuscrita, nome completo do médico, CRM/UF, RQE.
-  // Não colocar tarjas ou mensagens adicionais no rodapé.
+  // Exibir SOMENTE: imagem da assinatura manuscrita autorizada, nome completo do médico ("Dr. ..."), CRM/UF, RQE e texto legal sem sobreposições.
   const footerY = 125
   const centerX = 297.64 // Metade da largura A4 (595.28)
 
   ops.push('0.85 0.85 0.85 RG')
   ops.push('0.5 w')
-  ops.push(`40 ${footerY + 30} m 555 ${footerY + 30} l S`)
+  ops.push(`40 ${footerY + 25} m 555 ${footerY + 25} l S`)
 
-  // Se houver assinatura manuscrita cadastrada com binário, renderizar a estampa gráfica centralizada
+  // Se houver assinatura manuscrita autorizada com binário, renderizar a estampa gráfica centralizada
   let hasImageXObject = false
 
   if (sigBinaryBytes.length > 0) {
     // Dimensões proporcionais da assinatura: largura máxima ~140pt, altura máxima ~42pt
     const sigImgW = 140
-    const sigImgH = 42
+    const sigImgH = 40
     const sigImgX = Math.round(centerX - sigImgW / 2)
-    const sigImgY = 82 // Logo acima do nome do médico
+    const sigImgY = 92 // Posicionada claramente acima da linha de identificação
 
     ops.push('q')
     ops.push(`${sigImgW} 0 0 ${sigImgH} ${sigImgX} ${sigImgY} cm`)
@@ -1864,21 +1896,21 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
     // Linha de assinatura padrão caso ainda não cadastrada
     ops.push('0.3 0.3 0.3 RG')
     ops.push('0.75 w')
-    ops.push('180 88 m 415 88 l S')
+    ops.push('180 96 m 415 96 l S')
   }
 
   // Linha da Assinatura do Médico (traço sutil centralizado sob a assinatura)
   ops.push('0.4 0.4 0.4 RG')
   ops.push('0.5 w')
-  ops.push('190 78 m 405 78 l S')
+  ops.push('190 86 m 405 86 l S')
 
-  // Nome Completo do Médico (Centralizado)
-  const docTitleLine = 'Dr(a). ' + doctorName
+  // Nome Completo do Médico (Centralizado) - Sem "(Admin)" e com prefixo correto "Dr. "
+  const docTitleLine = 'Dr. ' + doctorName
   const titleOffset = Math.max(120, Math.round(centerX - (docTitleLine.length * 5.2) / 2))
   ops.push('0.1 0.1 0.1 rg')
   ops.push('BT')
   ops.push('/F2 10 Tf')
-  ops.push(`${titleOffset} 65 Td`)
+  ops.push(`${titleOffset} 72 Td`)
   ops.push(`(${escapePdfText(docTitleLine)}) Tj`)
   ops.push('ET')
 
@@ -1888,8 +1920,28 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
   const crmOffset = Math.max(130, Math.round(centerX - (crmLine.length * 4.4) / 2))
   ops.push('BT')
   ops.push('/F1 8.5 Tf')
-  ops.push(`${crmOffset} 52 Td`)
+  ops.push(`${crmOffset} 58 Td`)
   ops.push(`(${escapePdfText(crmLine)}) Tj`)
+  ops.push('ET')
+
+  // Informações legais e controle do documento no rodapé sem colisões
+  const legalText =
+    'Laudo emitido por telemedicina conforme Resolução CFM 2.314/2022 e Diretrizes da SBC.'
+  const legalOffset = Math.max(60, Math.round(centerX - (legalText.length * 3.6) / 2))
+  ops.push('BT')
+  ops.push('/F1 7 Tf')
+  ops.push(`${legalOffset} 44 Td`)
+  ops.push(`(${escapePdfText(legalText)}) Tj`)
+  ops.push('ET')
+
+  const docCodeLegal =
+    'Doc ID: ' + docCode + '  |  Versão: ' + nextVersion + '.0  |  SHA-256 Registrado'
+  const docCodeOffset = Math.max(80, Math.round(centerX - (docCodeLegal.length * 3.6) / 2))
+  ops.push('0.4 0.4 0.4 rg')
+  ops.push('BT')
+  ops.push('/F3 6.5 Tf')
+  ops.push(`${docCodeOffset} 32 Td`)
+  ops.push(`(${escapePdfText(docCodeLegal)}) Tj`)
   ops.push('ET')
 
   const contentStream = ops.join('\n')
@@ -2945,7 +2997,15 @@ routerAdd('POST', '/backend/v1/signatures/birdid/generate-test-pdf', (e) => {
   const nowFormatted = new Date().toLocaleString('pt-BR')
 
   // Identificação do MÉDICO REAL signatário (do cadastro do usuário autenticado)
-  const doctorRealName = authRecord.getString('name') || 'Médico Administrador'
+  let rawDocTestName = authRecord.getString('name') || 'Médico Cardiologista'
+  rawDocTestName = rawDocTestName.replace(/\s*\(Admin\)/gi, '').trim()
+  if (/^Dr\(a\)\.?\s*/i.test(rawDocTestName)) {
+    rawDocTestName = rawDocTestName.replace(/^Dr\(a\)\.?\s*/i, '').trim()
+  }
+  if (/^Dr\.?\s*/i.test(rawDocTestName)) {
+    rawDocTestName = rawDocTestName.replace(/^Dr\.?\s*/i, '').trim()
+  }
+  const doctorRealName = 'Dr. ' + (rawDocTestName || 'Márcio Eliziário')
   const doctorCrm = doctor.getString('crm')
   const doctorCrmState = doctor.getString('crm_state') || 'SP'
   const doctorRqe = doctor.getString('rqe')

@@ -44,6 +44,37 @@ export async function runSecurityAndIsolationTests(
   onProgress?: (tests: TestResultItem[]) => void,
 ): Promise<TestResultItem[]> {
   const tests: TestResultItem[] = [
+    // --- TESTES DE ADMINISTRAÇÃO AUTÔNOMA DE USUÁRIOS (ETAPA 11) ---
+    {
+      id: 'test-admin-1-list-users-isolation',
+      name: 'Admin - Listagem de Usuários e Isolamento Multi-tenant',
+      category: 'rbac',
+      description:
+        'Consulta à rota protegida /backend/v1/admin/users com mapeamento de cardiologistas, gestores e vínculos organizacionais.',
+      expected:
+        'Backend retorna usuários com dados profissionais e respeita o isolamento por organização.',
+      status: 'pending',
+    },
+    {
+      id: 'test-admin-2-block-self-escalation',
+      name: 'Admin - Bloqueio de Escalada de Privilégios e Criação Indevida',
+      category: 'rbac',
+      description:
+        'Tentativa de criar ou promover usuário a administrador sem as devidas credenciais do Administrador Principal.',
+      expected: 'Backend rejeita a operação com HTTP 403 Forbidden.',
+      status: 'pending',
+    },
+    {
+      id: 'test-admin-3-protect-primary-admin',
+      name: 'Admin - Proteção da Conta do Administrador Principal',
+      category: 'rbac',
+      description:
+        'Tentativa de exclusão ou suspensão da conta principal (marcio.eliziario@hotmail.com).',
+      expected:
+        'Operação estritamente bloqueada pelo backend para garantir o último acesso administrativo.',
+      status: 'pending',
+    },
+
     // --- TESTES DA ETAPA 1 (PRESERVADOS) ---
     {
       id: 'test-1-cross-org-read',
@@ -6230,6 +6261,102 @@ export async function runSecurityAndIsolationTests(
       status: 'failed',
       durationMs: Math.round(performance.now() - te1b8Start),
       realResult: `Erro no teste de revogação: ${err.message}`,
+    })
+  }
+
+  // -------------------------------------------------------------
+  // TESTES DE ADMINISTRAÇÃO AUTÔNOMA DE USUÁRIOS & ISOLAMENTO (ETAPA 11)
+  // -------------------------------------------------------------
+  const tAdmin1Start = performance.now()
+  try {
+    const listRes = await pb.send('/backend/v1/admin/users', { method: 'GET' })
+    const hasUsers = listRes.success && Array.isArray(listRes.users) && listRes.users.length > 0
+    updateTest('test-admin-1-list-users-isolation', {
+      status: hasUsers ? 'passed' : 'failed',
+      durationMs: Math.round(performance.now() - tAdmin1Start),
+      httpStatus: 200,
+      realResult: `Listagem administrativa executada com sucesso no backend. Total retornado: ${listRes.total || listRes.users?.length} usuários com vínculos multi-tenant mapeados.`,
+    })
+  } catch (err: any) {
+    updateTest('test-admin-1-list-users-isolation', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - tAdmin1Start),
+      realResult: `Falha na listagem administrativa: ${err.message}`,
+    })
+  }
+
+  const tAdmin2Start = performance.now()
+  try {
+    // Tentativa de auto-promoção ou concessão indevida de admin por usuário anônimo / não autorizado
+    const unauthClient = new PocketBase(pb.baseUrl)
+    let blocked = false
+    try {
+      await unauthClient.send('/backend/v1/admin/users', {
+        method: 'POST',
+        body: {
+          name: 'Teste Não Autorizado',
+          email: 'hack@teste.com',
+          password: 'Password@123',
+          role: 'admin',
+          organization_id: 'org_invalida',
+        },
+      })
+    } catch (e: any) {
+      if (e.status === 401 || e.status === 403 || e.message?.includes('Acesso')) {
+        blocked = true
+      }
+    }
+
+    updateTest('test-admin-2-block-self-escalation', {
+      status: blocked ? 'passed' : 'failed',
+      durationMs: Math.round(performance.now() - tAdmin2Start),
+      httpStatus: 403,
+      realResult: blocked
+        ? 'Tentativa de escalada ou chamada não autenticada bloqueada pelo backend com HTTP 403/401.'
+        : 'FALHA: O backend permitiu a operação administrativa sem validação.',
+    })
+  } catch (err: any) {
+    updateTest('test-admin-2-block-self-escalation', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - tAdmin2Start),
+      realResult: `Erro no teste de escalada: ${err.message}`,
+    })
+  }
+
+  const tAdmin3Start = performance.now()
+  try {
+    // Proteger conta do Administrador Principal de exclusão acidental
+    const primaryAdminEmail = 'marcio.eliziario@hotmail.com'
+    const usersRes = await pb.send(
+      `/backend/v1/admin/users?email=${encodeURIComponent(primaryAdminEmail)}`,
+      { method: 'GET' },
+    )
+    const primaryUser = usersRes.users?.find((u: any) => u.email === primaryAdminEmail)
+
+    let deleteBlocked = false
+    if (primaryUser) {
+      try {
+        await pb.send(`/backend/v1/admin/users/${primaryUser.id}`, { method: 'DELETE' })
+      } catch (delErr: any) {
+        if (delErr.status === 403 || delErr.message?.includes('protegida contra exclusão')) {
+          deleteBlocked = true
+        }
+      }
+    }
+
+    updateTest('test-admin-3-protect-primary-admin', {
+      status: deleteBlocked ? 'passed' : 'failed',
+      durationMs: Math.round(performance.now() - tAdmin3Start),
+      httpStatus: 403,
+      realResult: deleteBlocked
+        ? 'A conta do Administrador Principal está blindada no backend contra exclusão acidental (HTTP 403 Forbidden).'
+        : 'Conta principal não localizada ou exclusão não foi bloqueada estritamente.',
+    })
+  } catch (err: any) {
+    updateTest('test-admin-3-protect-primary-admin', {
+      status: 'failed',
+      durationMs: Math.round(performance.now() - tAdmin3Start),
+      realResult: `Erro no teste de proteção da conta principal: ${err.message}`,
     })
   }
 

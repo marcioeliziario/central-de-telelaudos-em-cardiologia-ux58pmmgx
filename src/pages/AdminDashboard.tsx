@@ -58,6 +58,7 @@ import { MfaSecurityCard } from '@/components/MfaSecurityCard'
 import { ShieldCheck } from 'lucide-react'
 import NotificationsPopover from '@/components/NotificationsPopover'
 import FinancialManagementModule from '@/components/FinancialManagementModule'
+import { UserManagementModule } from '@/components/UserManagementModule'
 
 export default function AdminDashboard() {
   const { user } = useAuth()
@@ -689,55 +690,9 @@ export default function AdminDashboard() {
           </Card>
         </TabsContent>
 
-        {/* 5. USUÁRIOS E PERFIS */}
+        {/* 5. USUÁRIOS E PERFIS (ADMINISTRAÇÃO AUTÔNOMA E COMPLETA) */}
         <TabsContent value="users" className="space-y-4 pt-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">
-              Vínculos de Usuários & Perfis (user_organizations)
-            </h2>
-            <p className="text-xs text-slate-600">
-              Mapeamento de papéis de acesso: Administrador, Gestor, Operador, Cardiologista
-            </p>
-          </div>
-          <Card className="border-slate-200">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-100/70 border-b border-slate-200 text-slate-700 font-semibold">
-                  <tr>
-                    <th className="p-3">Usuário</th>
-                    <th className="p-3">Organização Vinculada</th>
-                    <th className="p-3">Perfil Atribuído</th>
-                    <th className="p-3">Cargo / Função</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {userOrgs.map((uo) => (
-                    <tr key={uo.id} className="hover:bg-slate-50/50">
-                      <td className="p-3 font-semibold text-slate-900">
-                        {uo.expand?.user_id?.name || 'Usuário'}
-                        <div className="text-[11px] text-slate-400 font-normal">
-                          {uo.expand?.user_id?.email}
-                        </div>
-                      </td>
-                      <td className="p-3 text-slate-700 font-medium">
-                        {uo.expand?.organization_id?.name || '—'}
-                      </td>
-                      <td className="p-3">
-                        <Badge className="text-[10px]" variant="secondary">
-                          {uo.role === 'admin' && 'Administrador Geral'}
-                          {uo.role === 'clinic_manager' && 'Gestor da Clínica'}
-                          {uo.role === 'clinic_operator' && 'Operador da Clínica'}
-                          {uo.role === 'cardiologist' && 'Cardiologista Laudador'}
-                          {uo.role === 'financial' && 'Financeiro (Inativo)'}
-                        </Badge>
-                      </td>
-                      <td className="p-3 text-slate-500">{uo.title_position || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          <UserManagementModule organizations={organizations} onRefreshData={loadData} />
         </TabsContent>
 
         {/* 6. EXAMES */}

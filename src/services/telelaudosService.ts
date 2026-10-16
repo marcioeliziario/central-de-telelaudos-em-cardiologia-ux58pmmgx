@@ -1,5 +1,7 @@
 import pb from '@/lib/pocketbase/client'
 import {
+  UserRole,
+  AdminManagedUserItem,
   Organization,
   Unit,
   Doctor,
@@ -743,6 +745,150 @@ export const monthlyClosingService = {
   }): Promise<any> {
     return await pb.send('/backend/v1/finance/billing/test-fixture-item', {
       method: 'POST',
+      body: data,
+    })
+  },
+}
+
+export interface CreateUserInput {
+  name: string
+  email: string
+  password: string
+  phone?: string
+  organization_id: string
+  role: UserRole
+  title_position?: string
+  // Cardiologista
+  crm?: string
+  crm_state?: string
+  rqe?: string
+  specialty?: string
+}
+
+export interface UpdateUserInput {
+  name?: string
+  phone?: string
+  password?: string
+  crm?: string
+  crm_state?: string
+  rqe?: string
+  specialty?: string
+}
+
+export const adminUserService = {
+  async listUsers(params?: {
+    name?: string
+    email?: string
+    role?: string
+    organization_id?: string
+    status?: string
+  }): Promise<{ success: boolean; total: number; users: AdminManagedUserItem[] }> {
+    const query = new URLSearchParams()
+    if (params?.name) query.set('name', params.name)
+    if (params?.email) query.set('email', params.email)
+    if (params?.role) query.set('role', params.role)
+    if (params?.organization_id) query.set('organization_id', params.organization_id)
+    if (params?.status) query.set('status', params.status)
+
+    const qs = query.toString()
+    return await pb.send(`/backend/v1/admin/users${qs ? `?${qs}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  async createUser(data: CreateUserInput): Promise<any> {
+    return await pb.send('/backend/v1/admin/users', {
+      method: 'POST',
+      body: data,
+    })
+  },
+
+  async updateUser(userId: string, data: UpdateUserInput): Promise<any> {
+    return await pb.send(`/backend/v1/admin/users/${userId}`, {
+      method: 'PUT',
+      body: data,
+    })
+  },
+
+  async suspendUser(userId: string, reason?: string): Promise<any> {
+    return await pb.send(`/backend/v1/admin/users/${userId}/suspend`, {
+      method: 'POST',
+      body: { reason: reason || 'Suspensão administrativa pelo painel de controle' },
+    })
+  },
+
+  async reactivateUser(userId: string): Promise<any> {
+    return await pb.send(`/backend/v1/admin/users/${userId}/reactivate`, {
+      method: 'POST',
+      body: {},
+    })
+  },
+
+  async manageRole(
+    userId: string,
+    data: {
+      action: 'assign' | 'revoke'
+      organization_id: string
+      role: UserRole
+      title_position?: string
+    },
+  ): Promise<any> {
+    return await pb.send(`/backend/v1/admin/users/${userId}/roles`, {
+      method: 'POST',
+      body: data,
+    })
+  },
+
+  async sendInviteOrReset(
+    userId: string,
+    data: {
+      type: 'reset_password' | 'set_temporary_password'
+      temporary_password?: string
+    },
+  ): Promise<any> {
+    return await pb.send(`/backend/v1/admin/users/${userId}/send-invite-or-reset`, {
+      method: 'POST',
+      body: data,
+    })
+  },
+
+  async deleteUserSafe(userId: string): Promise<any> {
+    return await pb.send(`/backend/v1/admin/users/${userId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async createOrganization(data: {
+    name: string
+    trade_name?: string
+    cnpj?: string
+    type: 'provider' | 'client'
+    email?: string
+    phone?: string
+    city?: string
+    state?: string
+  }): Promise<any> {
+    return await pb.send('/backend/v1/admin/organizations', {
+      method: 'POST',
+      body: data,
+    })
+  },
+
+  async updateOrganization(
+    orgId: string,
+    data: {
+      name?: string
+      trade_name?: string
+      cnpj?: string
+      email?: string
+      phone?: string
+      city?: string
+      state?: string
+      is_active?: boolean
+    },
+  ): Promise<any> {
+    return await pb.send(`/backend/v1/admin/organizations/${orgId}`, {
+      method: 'PUT',
       body: data,
     })
   },

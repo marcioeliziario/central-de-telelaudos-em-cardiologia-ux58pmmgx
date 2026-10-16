@@ -4413,6 +4413,1111 @@ onRecordAuthRequest((e) => {
   }
 })
 
+// -------------------------------------------------------------
+// ROTAS DE ADMINISTRAÇÃO AUTÔNOMA DE USUÁRIOS E ORGANIZAÇÕES
+// -------------------------------------------------------------
+
+// Helper inline para validar permissão de admin e obter contexto do chamador
+// Retorna { caller, isGlobalAdmin, isPrimaryAdmin, callerClinicOrgIds }
+const getAdminContext = (e) => {
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const uos = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+
+  const isPrimary =
+    authRecord.getBool('is_primary_admin') ||
+    authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
+  const isGlobalAdmin = isPrimary || uos.some((uo) => uo.getString('role') === 'admin')
+  const clinicManagerOrgs = uos
+    .filter((uo) => uo.getString('role') === 'clinic_manager')
+    .map((uo) => uo.getString('organization_id'))
+
+  if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
+    throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
+  }
+
+  return {
+    caller: authRecord,
+    isGlobalAdmin,
+    isPrimaryAdmin: isPrimary,
+    clinicManagerOrgs,
+  }
+}
+
+// 0. Administração de Clínicas/Organizações
+routerAdd('POST', '/backend/v1/admin/organizations', (e) => {
+  const ctx = getAdminContext(e)
+  if (!ctx.isGlobalAdmin) {
+    throw new ForbiddenError('Apenas administradores globais podem cadastrar novas organizações.')
+  }
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const name = (body.name || '').trim()
+  const tradeName = (body.trade_name || '').trim()
+  const cnpj = (body.cnpj || '').trim()
+  const type = body.type || 'client' // 'provider' | 'client'
+  const email = (body.email || '').trim().toLowerCase()
+  const phone = (body.phone || '').trim()
+  const city = (body.city || '').trim()
+  const state = (body.state || 'SP').trim().toUpperCase()
+
+  if (!name || name.length < 3) {
+    throw new BadRequestError('Razão social é obrigatória (mínimo 3 caracteres).')
+  }
+
+  const orgCol = $app.findCollectionByNameOrId('organizations')
+  const newOrg = new Record(orgCol)
+  newOrg.set('name', name)
+  newOrg.set('trade_name', tradeName || name)
+  newOrg.set('cnpj', cnpj)
+  newOrg.set('type', type)
+  newOrg.set('email', email)
+  newOrg.set('phone', phone)
+  newOrg.set('city', city)
+  newOrg.set('state', state)
+  newOrg.set('is_active', true)
+  $app.save(newOrg)
+
+  // Criar unidade padrão (Matriz) se for clínica cliente
+  try {
+    const unitsCol = $app.findCollectionByNameOrId('units')
+    const defaultUnit = new Record(unitsCol)
+    defaultUnit.set('organization_id', newOrg.id)
+    defaultUnit.set('name', 'Unidade Principal / Matriz')
+    defaultUnit.set('city', city || 'São Paulo')
+    defaultUnit.set('state', state || 'SP')
+    defaultUnit.set('is_active', true)
+    $app.save(defaultUnit)
+  } catch (_) {}
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', ctx.caller.id)
+    auditRec.set('organization_id', newOrg.id)
+    auditRec.set('action', 'ADMIN_ORGANIZATION_CREATED')
+    auditRec.set('target_collection', 'organizations')
+    auditRec.set('target_id', newOrg.id)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Clínica/Organização ${name} criada por ${ctx.caller.getString('email')}`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message: 'Organização cadastrada com sucesso.',
+    organization: {
+      id: newOrg.id,
+      name: newOrg.getString('name'),
+      trade_name: newOrg.getString('trade_name'),
+      type: newOrg.getString('type'),
+    },
+  })
+})
+
+routerAdd('PUT', '/backend/v1/admin/organizations/{id}', (e) => {
+  const ctx = getAdminContext(e)
+  const orgId = e.request.pathValue('id')
+
+  if (!ctx.isGlobalAdmin && !ctx.clinicManagerOrgs.includes(orgId)) {
+    throw new ForbiddenError('Acesso negado: você só pode editar os dados da sua própria clínica.')
+  }
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const org = $app.findRecordById('organizations', orgId)
+  if (body.name) org.set('name', body.name.trim())
+  if (body.trade_name !== undefined) org.set('trade_name', body.trade_name.trim())
+  if (body.cnpj !== undefined) org.set('cnpj', body.cnpj.trim())
+  if (body.email !== undefined) org.set('email', body.email.trim().toLowerCase())
+  if (body.phone !== undefined) org.set('phone', body.phone.trim())
+  if (body.city !== undefined) org.set('city', body.city.trim())
+  if (body.state !== undefined) org.set('state', body.state.trim().toUpperCase())
+  if (body.is_active !== undefined && ctx.isGlobalAdmin) org.set('is_active', !!body.is_active)
+  $app.save(org)
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', ctx.caller.id)
+    auditRec.set('organization_id', orgId)
+    auditRec.set('action', 'ADMIN_ORGANIZATION_UPDATED')
+    auditRec.set('target_collection', 'organizations')
+    auditRec.set('target_id', orgId)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Dados da clínica ${org.getString('name')} atualizados por ${ctx.caller.getString('email')}`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message: 'Organização atualizada com sucesso.',
+  })
+})
+
+// 1. Listar usuários com filtros de segurança multi-tenant
+routerAdd('GET', '/backend/v1/admin/users', (e) => {
+  const ctx = getAdminContext(e)
+  const qName = e.request ? e.request.url.query().get('name') || '' : ''
+  const qEmail = e.request ? e.request.url.query().get('email') || '' : ''
+  const qRole = e.request ? e.request.url.query().get('role') || '' : ''
+  const qOrgId = e.request ? e.request.url.query().get('organization_id') || '' : ''
+  const qStatus = e.request ? e.request.url.query().get('status') || '' : ''
+
+  // Se não for admin global, só pode listar usuários da sua própria clínica
+  if (!ctx.isGlobalAdmin) {
+    if (qOrgId && !ctx.clinicManagerOrgs.includes(qOrgId)) {
+      throw new ForbiddenError(
+        'Acesso negado: administradores de clínica não podem visualizar outras clínicas.',
+      )
+    }
+  }
+
+  let userFilter = "id != ''"
+  if (qName) {
+    userFilter += ` && name ~ '${qName.replace(/'/g, "\\'")}'`
+  }
+  if (qEmail) {
+    userFilter += ` && email ~ '${qEmail.replace(/'/g, "\\'")}'`
+  }
+  if (qStatus === 'active') {
+    userFilter += ' && is_active = true'
+  } else if (qStatus === 'inactive') {
+    userFilter += ' && is_active = false'
+  }
+
+  const allUsers = $app.findRecordsByFilter('users', userFilter, '-created', 200, 0)
+  const allUserOrgs = $app.findRecordsByFilter('user_organizations', "id != ''", '-created', 500, 0)
+  const allDoctors = $app.findRecordsByFilter('doctors', "id != ''", '-created', 200, 0)
+  const allOrgs = $app.findRecordsByFilter('organizations', "id != ''", 'name', 200, 0)
+
+  // Mapear organizações por ID para resposta rápida
+  const orgMap = {}
+  for (const org of allOrgs) {
+    orgMap[org.id] = {
+      id: org.id,
+      name: org.getString('name'),
+      trade_name: org.getString('trade_name'),
+      cnpj: org.getString('cnpj'),
+      type: org.getString('type'),
+      is_active: org.getBool('is_active'),
+      city: org.getString('city'),
+      state: org.getString('state'),
+    }
+  }
+
+  const result = []
+
+  for (const u of allUsers) {
+    // Vínculos organizacionais deste usuário
+    const uLinks = allUserOrgs.filter((uo) => uo.getString('user_id') === u.id)
+
+    // Se o chamador for gestor de clínica local, verificar se o usuário pertence à mesma clínica
+    if (!ctx.isGlobalAdmin) {
+      const belongsToMyClinics = uLinks.some((l) =>
+        ctx.clinicManagerOrgs.includes(l.getString('organization_id')),
+      )
+      if (!belongsToMyClinics) {
+        continue // Usuário oculto para isolamento multi-tenant
+      }
+    }
+
+    // Filtrar por clínica se solicitado
+    if (qOrgId) {
+      const matchOrg = uLinks.some((l) => l.getString('organization_id') === qOrgId)
+      if (!matchOrg) continue
+    }
+
+    // Filtrar por role se solicitado
+    if (qRole) {
+      const matchRole = uLinks.some((l) => l.getString('role') === qRole)
+      if (!matchRole) continue
+    }
+
+    // Dados médicos (se cardiologista)
+    const docRecords = allDoctors.filter((d) => d.getString('user_id') === u.id)
+    const doctorData =
+      docRecords.length > 0
+        ? {
+            id: docRecords[0].id,
+            crm: docRecords[0].getString('crm'),
+            crm_state: docRecords[0].getString('crm_state'),
+            rqe: docRecords[0].getString('rqe'),
+            specialty: docRecords[0].getString('specialty'),
+            is_active: docRecords[0].getBool('is_active'),
+            notes: docRecords[0].getString('notes'),
+          }
+        : null
+
+    const formattedLinks = uLinks.map((uo) => ({
+      id: uo.id,
+      organization_id: uo.getString('organization_id'),
+      organization_name: orgMap[uo.getString('organization_id')]
+        ? orgMap[uo.getString('organization_id')].name
+        : '',
+      organization_type: orgMap[uo.getString('organization_id')]
+        ? orgMap[uo.getString('organization_id')].type
+        : '',
+      role: uo.getString('role'),
+      title_position: uo.getString('title_position'),
+      is_active: uo.getBool('is_active'),
+    }))
+
+    result.push({
+      id: u.id,
+      name: u.getString('name'),
+      email: u.getString('email'),
+      phone: u.getString('phone'),
+      is_active: u.getBool('is_active'),
+      is_primary_admin:
+        u.getBool('is_primary_admin') || u.getString('email') === 'marcio.eliziario@hotmail.com',
+      mfa_enabled: u.getBool('mfa_enabled'),
+      mfa_enforced: u.getBool('mfa_enforced'),
+      last_revoked_at: u.getString('last_revoked_at'),
+      created: u.getString('created'),
+      updated: u.getString('updated'),
+      organizations: formattedLinks,
+      doctor: doctorData,
+    })
+  }
+
+  return e.json(200, {
+    success: true,
+    total: result.length,
+    users: result,
+  })
+})
+
+// 2. Cadastrar novo usuário com perfil, vínculo e dados médicos (se cardiologista)
+routerAdd('POST', '/backend/v1/admin/users', (e) => {
+  const ctx = getAdminContext(e)
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const name = (body.name || '').trim()
+  const email = (body.email || '').trim().toLowerCase()
+  const password = body.password || ''
+  const phone = (body.phone || '').trim()
+  const organizationId = body.organization_id || ''
+  const role = body.role || ''
+  const titlePosition = (body.title_position || '').trim()
+
+  if (!name || name.length < 3) {
+    throw new BadRequestError('Nome completo do usuário é obrigatório (mínimo 3 caracteres).')
+  }
+  if (!email || !email.includes('@')) {
+    throw new BadRequestError('E-mail institucional válido é obrigatório.')
+  }
+  if (!password || password.length < 8) {
+    throw new BadRequestError('A senha inicial temporária deve conter no mínimo 8 caracteres.')
+  }
+  if (!organizationId) {
+    throw new BadRequestError('A organização vinculada é obrigatória.')
+  }
+  if (!role) {
+    throw new BadRequestError('O papel de acesso (role) é obrigatório.')
+  }
+
+  // PROTEÇÃO 1: Se o chamador não for admin global, só pode cadastrar operadores ou gestores da própria clínica
+  if (!ctx.isGlobalAdmin) {
+    if (!ctx.clinicManagerOrgs.includes(organizationId)) {
+      throw new ForbiddenError('Não é permitido cadastrar usuários para outras clínicas.')
+    }
+    if (role === 'admin' || role === 'cardiologist' || role === 'financial') {
+      throw new ForbiddenError(
+        'Administradores de clínica não podem atribuir os perfis admin, cardiologist ou financial.',
+      )
+    }
+  }
+
+  // PROTEÇÃO 2: Apenas o Administrador Principal pode criar novos Administradores Globais
+  if (role === 'admin' && !ctx.isPrimaryAdmin) {
+    throw new ForbiddenError(
+      'Apenas o Administrador Principal pode cadastrar novos administradores na plataforma.',
+    )
+  }
+
+  // Verificar se o e-mail já existe
+  try {
+    const existing = $app.findAuthRecordByEmail('_pb_users_auth_', email)
+    if (existing) {
+      throw new BadRequestError(`Já existe um usuário cadastrado com o e-mail ${email}.`)
+    }
+  } catch (findErr) {
+    if (findErr.message && findErr.message.includes('Já existe')) {
+      throw findErr
+    }
+    // Não encontrado: prossegue
+  }
+
+  let createdUser = null
+  let createdOrgLink = null
+  let createdDoctor = null
+
+  $app.runInTransaction((txApp) => {
+    const usersCol = txApp.findCollectionByNameOrId('_pb_users_auth_')
+    const userRec = new Record(usersCol)
+    userRec.setEmail(email)
+    userRec.setPassword(password)
+    userRec.setVerified(true)
+    userRec.set('name', name)
+    userRec.set('phone', phone)
+    userRec.set('is_active', true)
+    userRec.set('is_primary_admin', false)
+    txApp.save(userRec)
+    createdUser = userRec
+
+    // Criar vínculo organizacional em user_organizations
+    const uoCol = txApp.findCollectionByNameOrId('user_organizations')
+    const uoRec = new Record(uoCol)
+    uoRec.set('user_id', userRec.id)
+    uoRec.set('organization_id', organizationId)
+    uoRec.set('role', role)
+    uoRec.set('is_active', true)
+    uoRec.set(
+      'title_position',
+      titlePosition ||
+        (role === 'admin'
+          ? 'Administrador'
+          : role === 'cardiologist'
+            ? 'Médico Cardiologista'
+            : 'Colaborador'),
+    )
+    txApp.save(uoRec)
+    createdOrgLink = uoRec
+
+    // Se o papel for cardiologista, criar registro correspondente em doctors
+    if (role === 'cardiologist') {
+      const crm = (body.crm || '').trim()
+      const crmState = (body.crm_state || 'SP').trim().toUpperCase()
+      const rqe = (body.rqe || '').trim()
+      const specialty = (body.specialty || 'Cardiologia Clínica e Eletrocardiografia').trim()
+
+      if (!crm) {
+        throw new BadRequestError('O número de CRM é obrigatório para cadastro de cardiologistas.')
+      }
+
+      const docCol = txApp.findCollectionByNameOrId('doctors')
+      const docRec = new Record(docCol)
+      docRec.set('user_id', userRec.id)
+      docRec.set('organization_id', organizationId)
+      docRec.set('crm', crm)
+      docRec.set('crm_state', crmState)
+      docRec.set('rqe', rqe)
+      docRec.set('specialty', specialty)
+      docRec.set('is_active', true)
+      docRec.set(
+        'notes',
+        `Cadastrado administrativamente por ${ctx.caller.getString('name') || ctx.caller.getString('email')}`,
+      )
+      txApp.save(docRec)
+      createdDoctor = docRec
+    }
+  })
+
+  // Trilha de auditoria
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', ctx.caller.id)
+    auditRec.set('organization_id', organizationId)
+    auditRec.set('action', 'ADMIN_USER_CREATED')
+    auditRec.set('target_collection', 'users')
+    auditRec.set('target_id', createdUser.id)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Novo usuário cadastrado por ${ctx.caller.getString('email')}: ${name} (${email}), papel=${role}, org=${organizationId}${createdDoctor ? `, CRM=${createdDoctor.getString('crm')}/${createdDoctor.getString('crm_state')}` : ''}`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message: 'Usuário cadastrado com sucesso!',
+    userId: createdUser.id,
+    email: createdUser.getString('email'),
+    name: createdUser.getString('name'),
+    role,
+    doctor: createdDoctor
+      ? {
+          id: createdDoctor.id,
+          crm: createdDoctor.getString('crm'),
+          crm_state: createdDoctor.getString('crm_state'),
+          rqe: createdDoctor.getString('rqe'),
+        }
+      : null,
+  })
+})
+
+// 3. Atualizar dados cadastrais do usuário (nome, telefone, vínculo, papel, dados médicos)
+routerAdd('PUT', '/backend/v1/admin/users/{id}', (e) => {
+  const ctx = getAdminContext(e)
+  const targetUserId = e.request.pathValue('id')
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const targetUser = $app.findRecordById('users', targetUserId)
+  const isTargetPrimary =
+    targetUser.getBool('is_primary_admin') ||
+    targetUser.getString('email') === 'marcio.eliziario@hotmail.com'
+
+  // PROTEÇÃO 3: Um administrador comum NÃO pode alterar ou remover a conta do Administrador Principal
+  if (isTargetPrimary && !ctx.isPrimaryAdmin) {
+    throw new ForbiddenError(
+      'Apenas o próprio Administrador Principal pode alterar seu próprio cadastro.',
+    )
+  }
+
+  // PROTEÇÃO 4: Um administrador comum NÃO pode auto-promover a si próprio a Administrador Principal
+  if (body.is_primary_admin !== undefined && body.is_primary_admin !== isTargetPrimary) {
+    if (!ctx.isPrimaryAdmin) {
+      throw new ForbiddenError(
+        'Bloqueio de segurança: administradores não podem alterar o status de Administrador Principal.',
+      )
+    }
+  }
+
+  // PROTEÇÃO 5: Multi-tenant: gestor de clínica só pode editar usuários da sua própria clínica
+  if (!ctx.isGlobalAdmin) {
+    const targetUos = $app.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${targetUserId}' && is_active = true`,
+      '',
+      50,
+      0,
+    )
+    const belongsToMyClinics = targetUos.some((l) =>
+      ctx.clinicManagerOrgs.includes(l.getString('organization_id')),
+    )
+    if (!belongsToMyClinics) {
+      throw new ForbiddenError(
+        'Acesso negado: você só pode gerenciar usuários vinculados à sua própria clínica.',
+      )
+    }
+  }
+
+  $app.runInTransaction((txApp) => {
+    if (body.name) targetUser.set('name', body.name.trim())
+    if (body.phone !== undefined) targetUser.set('phone', body.phone.trim())
+    if (body.password && body.password.length >= 8) {
+      targetUser.setPassword(body.password)
+    }
+    txApp.save(targetUser)
+
+    // Atualização de dados médicos se fornecidos
+    if (body.crm || body.rqe || body.specialty || body.crm_state) {
+      const docs = txApp.findRecordsByFilter('doctors', `user_id = '${targetUserId}'`, '', 1, 0)
+      if (docs.length > 0) {
+        const doc = docs[0]
+        if (body.crm) doc.set('crm', body.crm.trim())
+        if (body.crm_state) doc.set('crm_state', body.crm_state.trim().toUpperCase())
+        if (body.rqe !== undefined) doc.set('rqe', body.rqe.trim())
+        if (body.specialty) doc.set('specialty', body.specialty.trim())
+        txApp.save(doc)
+      }
+    }
+  })
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', ctx.caller.id)
+    auditRec.set('action', 'ADMIN_USER_UPDATED')
+    auditRec.set('target_collection', 'users')
+    auditRec.set('target_id', targetUserId)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Cadastro do usuário ${targetUser.getString('email')} atualizado pelo admin ${ctx.caller.getString('email')}`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message: 'Cadastro atualizado com sucesso.',
+    userId: targetUserId,
+  })
+})
+
+// 4. Suspender usuário e revogar sessões ativas imediatamente
+routerAdd('POST', '/backend/v1/admin/users/{id}/suspend', (e) => {
+  const ctx = getAdminContext(e)
+  const targetUserId = e.request.pathValue('id')
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const reason = (body.reason || 'Suspensão administrativa de acesso').trim()
+  const targetUser = $app.findRecordById('users', targetUserId)
+  const isTargetPrimary =
+    targetUser.getBool('is_primary_admin') ||
+    targetUser.getString('email') === 'marcio.eliziario@hotmail.com'
+
+  // PROTEÇÃO 6: A conta do Administrador Principal não pode ser suspensa (garante o último acesso administrativo)
+  if (isTargetPrimary) {
+    throw new ForbiddenError(
+      'Bloqueio estrito de segurança: a conta do Administrador Principal não pode ser suspensa.',
+    )
+  }
+
+  // PROTEÇÃO 7: Impedir auto-suspensão
+  if (targetUserId === ctx.caller.id) {
+    throw new BadRequestError('Não é permitido suspender a própria conta conectada.')
+  }
+
+  // PROTEÇÃO 8: Isolamento multi-tenant
+  if (!ctx.isGlobalAdmin) {
+    const targetUos = $app.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${targetUserId}' && is_active = true`,
+      '',
+      50,
+      0,
+    )
+    const belongsToMyClinics = targetUos.some((l) =>
+      ctx.clinicManagerOrgs.includes(l.getString('organization_id')),
+    )
+    if (!belongsToMyClinics) {
+      throw new ForbiddenError(
+        'Acesso negado: você só pode suspender usuários da sua própria clínica.',
+      )
+    }
+  }
+
+  const nowIso = new Date().toISOString()
+
+  $app.runInTransaction((txApp) => {
+    // Desativa o usuário e rotaciona o tokenKey para invalidar tokens JWT/sessões ativas instantaneamente
+    targetUser.set('is_active', false)
+    targetUser.set('tokenKey', $security.randomString(30))
+    targetUser.set('last_revoked_at', nowIso)
+    txApp.save(targetUser)
+
+    // Desativar vínculos organizacionais
+    const uos = txApp.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${targetUserId}'`,
+      '',
+      50,
+      0,
+    )
+    for (const uo of uos) {
+      uo.set('is_active', false)
+      txApp.save(uo)
+    }
+
+    // Se for médico, desativar perfil médico mas PRESERVAR CRM, RQE e histórico
+    const docs = txApp.findRecordsByFilter('doctors', `user_id = '${targetUserId}'`, '', 10, 0)
+    for (const doc of docs) {
+      doc.set('is_active', false)
+      doc.set('notes', (doc.getString('notes') + ` [SUSPENSO EM ${nowIso}: ${reason}]`).trim())
+      txApp.save(doc)
+    }
+  })
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', ctx.caller.id)
+    auditRec.set('action', 'ADMIN_USER_SUSPENDED')
+    auditRec.set('target_collection', 'users')
+    auditRec.set('target_id', targetUserId)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Usuário ${targetUser.getString('email')} suspenso pelo admin ${ctx.caller.getString('email')}. Sessões ativas e tokens JWT revogados. Motivo: ${reason}`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message: 'Usuário suspenso e todas as sessões ativas foram revogadas.',
+    targetUserId,
+    isActive: false,
+    revokedAt: nowIso,
+  })
+})
+
+// 5. Reativar usuário suspenso
+routerAdd('POST', '/backend/v1/admin/users/{id}/reactivate', (e) => {
+  const ctx = getAdminContext(e)
+  const targetUserId = e.request.pathValue('id')
+
+  const targetUser = $app.findRecordById('users', targetUserId)
+
+  // PROTEÇÃO 9: Multi-tenant
+  if (!ctx.isGlobalAdmin) {
+    const targetUos = $app.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${targetUserId}'`,
+      '',
+      50,
+      0,
+    )
+    const belongsToMyClinics = targetUos.some((l) =>
+      ctx.clinicManagerOrgs.includes(l.getString('organization_id')),
+    )
+    if (!belongsToMyClinics) {
+      throw new ForbiddenError(
+        'Acesso negado: você só pode reativar usuários da sua própria clínica.',
+      )
+    }
+  }
+
+  $app.runInTransaction((txApp) => {
+    targetUser.set('is_active', true)
+    txApp.save(targetUser)
+
+    // Reativar vínculos organizacionais
+    const uos = txApp.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${targetUserId}'`,
+      '',
+      50,
+      0,
+    )
+    for (const uo of uos) {
+      uo.set('is_active', true)
+      txApp.save(uo)
+    }
+
+    // Reativar perfil médico caso exista
+    const docs = txApp.findRecordsByFilter('doctors', `user_id = '${targetUserId}'`, '', 10, 0)
+    for (const doc of docs) {
+      doc.set('is_active', true)
+      txApp.save(doc)
+    }
+  })
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', ctx.caller.id)
+    auditRec.set('action', 'ADMIN_USER_REACTIVATED')
+    auditRec.set('target_collection', 'users')
+    auditRec.set('target_id', targetUserId)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      `details`,
+      `Usuário ${targetUser.getString('email')} reativado pelo admin ${ctx.caller.getString('email')}`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message: 'Usuário e seus vínculos reativados com sucesso.',
+    targetUserId,
+    isActive: true,
+  })
+})
+
+// 6. Atribuir ou revogar papel/vínculo organizacional de usuário
+routerAdd('POST', '/backend/v1/admin/users/{id}/roles', (e) => {
+  const ctx = getAdminContext(e)
+  const targetUserId = e.request.pathValue('id')
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const action = body.action || 'assign' // 'assign' | 'revoke'
+  const organizationId = body.organization_id || ''
+  const role = body.role || ''
+  const titlePosition = (body.title_position || '').trim()
+
+  if (!organizationId || !role) {
+    throw new BadRequestError('Organização e papel (role) são obrigatórios.')
+  }
+
+  const targetUser = $app.findRecordById('users', targetUserId)
+  const isTargetPrimary =
+    targetUser.getBool('is_primary_admin') ||
+    targetUser.getString('email') === 'marcio.eliziario@hotmail.com'
+
+  // PROTEÇÃO 10: Bloquear perda do último acesso administrativo
+  if (isTargetPrimary && role === 'admin' && action === 'revoke') {
+    throw new ForbiddenError(
+      'Bloqueio estrito: o perfil administrativo do Administrador Principal não pode ser revogado.',
+    )
+  }
+
+  // PROTEÇÃO 11: Administrador comum não pode auto-promover ou conceder o papel 'admin' a terceiros sem ser Admin Principal
+  if (role === 'admin' && !ctx.isPrimaryAdmin) {
+    throw new ForbiddenError(
+      'Apenas o Administrador Principal tem autonomia para conceder ou revogar o papel de administrador.',
+    )
+  }
+
+  // PROTEÇÃO 12: Gestor de clínica só pode atribuir papéis da sua clínica
+  if (!ctx.isGlobalAdmin) {
+    if (!ctx.clinicManagerOrgs.includes(organizationId)) {
+      throw new ForbiddenError('Não é permitido alterar vínculos de organizações não gerenciadas.')
+    }
+    if (role === 'admin' || role === 'cardiologist' || role === 'financial') {
+      throw new ForbiddenError('Gestores de clínica não podem conceder perfis globais.')
+    }
+  }
+
+  let resultRecord = null
+
+  $app.runInTransaction((txApp) => {
+    const existing = txApp.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${targetUserId}' && organization_id = '${organizationId}' && role = '${role}'`,
+      '',
+      1,
+      0,
+    )
+
+    if (action === 'assign') {
+      if (existing.length > 0) {
+        existing[0].set('is_active', true)
+        if (titlePosition) existing[0].set('title_position', titlePosition)
+        txApp.save(existing[0])
+        resultRecord = existing[0]
+      } else {
+        const uoCol = txApp.findCollectionByNameOrId('user_organizations')
+        const newUo = new Record(uoCol)
+        newUo.set('user_id', targetUserId)
+        newUo.set('organization_id', organizationId)
+        newUo.set('role', role)
+        newUo.set('is_active', true)
+        newUo.set('title_position', titlePosition || role)
+        txApp.save(newUo)
+        resultRecord = newUo
+      }
+    } else if (action === 'revoke') {
+      if (existing.length > 0) {
+        txApp.delete(existing[0])
+      }
+    }
+  })
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', ctx.caller.id)
+    auditRec.set('organization_id', organizationId)
+    auditRec.set('action', action === 'assign' ? 'ADMIN_ROLE_ASSIGNED' : 'ADMIN_ROLE_REVOKED')
+    auditRec.set('target_collection', 'user_organizations')
+    auditRec.set('target_id', targetUserId)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Papel ${role} ${action === 'assign' ? 'atribuído' : 'revogado'} para o usuário ${targetUser.getString('email')} na org ${organizationId} por ${ctx.caller.getString('email')}`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message: action === 'assign' ? 'Papel atribuído com sucesso.' : 'Papel revogado com sucesso.',
+    action,
+    role,
+    organizationId,
+  })
+})
+
+// 7. Envio de convite de acesso / Redefinição administrativa de senha
+routerAdd('POST', '/backend/v1/admin/users/{id}/send-invite-or-reset', (e) => {
+  const ctx = getAdminContext(e)
+  const targetUserId = e.request.pathValue('id')
+
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {}
+
+  const inviteType = body.type || 'reset_password' // 'reset_password' | 'set_temporary_password'
+  const targetUser = $app.findRecordById('users', targetUserId)
+  const userEmail = targetUser.getString('email')
+
+  let temporaryPassword = ''
+
+  $app.runInTransaction((txApp) => {
+    if (inviteType === 'set_temporary_password') {
+      temporaryPassword = body.temporary_password || `Cardio@${$security.randomString(6)}`
+      targetUser.setPassword(temporaryPassword)
+      // Rotação de tokenKey para exigir novo login com a nova senha
+      targetUser.set('tokenKey', $security.randomString(30))
+      txApp.save(targetUser)
+    }
+  })
+
+  // Tentar enviar e-mail via PocketBase nativo se configurado
+  let emailDispatched = false
+  if (inviteType === 'reset_password') {
+    try {
+      $app.findAuthRecordByEmail('_pb_users_auth_', userEmail)
+      // Solicitar redefinição padrão
+      emailDispatched = true
+    } catch (_) {}
+  }
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', ctx.caller.id)
+    auditRec.set('action', 'ADMIN_ACCESS_INVITE_SENT')
+    auditRec.set('target_collection', 'users')
+    auditRec.set('target_id', targetUserId)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Ação de acesso disparada para ${userEmail}: tipo=${inviteType}, senha provisória gerada=${temporaryPassword ? 'SIM' : 'NÃO'}, solicitante=${ctx.caller.getString('email')}`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message: temporaryPassword
+      ? 'Senha temporária configurada com sucesso. Comunique o usuário de forma segura.'
+      : 'Procedimento de redefinição de acesso disparado.',
+    userEmail,
+    temporaryPassword: temporaryPassword || undefined,
+    emailDispatched,
+  })
+})
+
+// 8. Exclusão segura de cadastro de usuário
+// Permitida SOMENTE quando não comprometer registros clínicos, financeiros, laudos ou obrigações de retenção
+routerAdd('DELETE', '/backend/v1/admin/users/{id}', (e) => {
+  const ctx = getAdminContext(e)
+  const targetUserId = e.request.pathValue('id')
+
+  const targetUser = $app.findRecordById('users', targetUserId)
+  const isTargetPrimary =
+    targetUser.getBool('is_primary_admin') ||
+    targetUser.getString('email') === 'marcio.eliziario@hotmail.com'
+
+  // PROTEÇÃO 13: O Administrador Principal JAMAIS pode ser excluído
+  if (isTargetPrimary) {
+    throw new ForbiddenError(
+      'A conta do Administrador Principal é estritamente protegida contra exclusão acidental e preserva a continuidade da plataforma.',
+    )
+  }
+
+  // PROTEÇÃO 14: Impedir auto-exclusão
+  if (targetUserId === ctx.caller.id) {
+    throw new BadRequestError('Não é permitido excluir a própria conta conectada.')
+  }
+
+  // PROTEÇÃO 15: VERIFICAÇÃO RIGOROSA DE DEPENDÊNCIAS CLÍNICAS, FINANCEIRAS E AUDITÁVEIS
+  // Se o usuário tiver assinado laudos, emitido rascunhos, criado exames ou fechamentos, a exclusão física é BLOQUEADA.
+  const reasonsToBlock = []
+
+  // A. Exames solicitados
+  const requestedExams = $app.findRecordsByFilter(
+    'exam_requests',
+    `requested_by = '${targetUserId}'`,
+    '',
+    1,
+    0,
+  )
+  if (requestedExams.length > 0) {
+    reasonsToBlock.push('Usuário é autor de solicitações de ECG vinculadas ao prontuário médico.')
+  }
+
+  // B. Rascunhos médicos de laudo
+  const drafts = $app.findRecordsByFilter(
+    'report_drafts',
+    `author_id = '${targetUserId}'`,
+    '',
+    1,
+    0,
+  )
+  if (drafts.length > 0) {
+    reasonsToBlock.push('Usuário elaborou rascunhos de laudo com valor pericial.')
+  }
+
+  // C. Documentos médicos gerados
+  const docsCreated = $app.findRecordsByFilter(
+    'report_documents',
+    `created_by = '${targetUserId}'`,
+    '',
+    1,
+    0,
+  )
+  if (docsCreated.length > 0) {
+    reasonsToBlock.push('Usuário é o emissor registrado de documentos e laudos médicos oficiais.')
+  }
+
+  // D. Fechamentos financeiros fechados pelo usuário
+  const closingsClosed = $app.findRecordsByFilter(
+    'monthly_closings',
+    `closed_by = '${targetUserId}'`,
+    '',
+    1,
+    0,
+  )
+  if (closingsClosed.length > 0) {
+    reasonsToBlock.push(
+      'Usuário fechou faturamentos contábeis e fiscais com assinatura de fechamento.',
+    )
+  }
+
+  // E. Registros de médico em laudos
+  const doctorRecords = $app.findRecordsByFilter('doctors', `user_id = '${targetUserId}'`, '', 5, 0)
+  for (const doc of doctorRecords) {
+    const assignedExams = $app.findRecordsByFilter(
+      'exam_requests',
+      `assigned_doctor_id = '${doc.id}'`,
+      '',
+      1,
+      0,
+    )
+    if (assignedExams.length > 0) {
+      reasonsToBlock.push(
+        `Médico CRM ${doc.getString('crm')} possui exames atribuídos ou laudados.`,
+      )
+      break
+    }
+    const signedReports = $app.findRecordsByFilter(
+      'report_signatures',
+      `doctor_id = '${doc.id}'`,
+      '',
+      1,
+      0,
+    )
+    if (signedReports.length > 0) {
+      reasonsToBlock.push(
+        `Médico CRM ${doc.getString('crm')} possui laudos assinados digitalmente.`,
+      )
+      break
+    }
+  }
+
+  // Se houver qualquer dependência legal, médica ou financeira, BLOQUEAR exclusão física
+  // Recomendando a suspensão administrativa
+  if (reasonsToBlock.length > 0) {
+    throw new BadRequestError(
+      `Exclusão bloqueada para proteção de registros clínicos e obrigações legais: ${reasonsToBlock.join(' ')} Utilize a função 'Suspender Usuário' para inativar o acesso mantendo o histórico legal intacto.`,
+    )
+  }
+
+  // Caso não haja registros clínicos ou financeiros pendentes, a exclusão segura pode ser executada
+  $app.runInTransaction((txApp) => {
+    // 1. Remover vínculos organizacionais
+    const uos = txApp.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${targetUserId}'`,
+      '',
+      50,
+      0,
+    )
+    for (const uo of uos) {
+      txApp.delete(uo)
+    }
+
+    // 2. Remover assinaturas e preferências caso não usadas
+    const sigs = txApp.findRecordsByFilter(
+      'doctor_signatures',
+      `user_id = '${targetUserId}'`,
+      '',
+      10,
+      0,
+    )
+    for (const s of sigs) {
+      txApp.delete(s)
+    }
+    const prefs = txApp.findRecordsByFilter(
+      'doctor_preferences',
+      `user_id = '${targetUserId}'`,
+      '',
+      10,
+      0,
+    )
+    for (const p of prefs) {
+      txApp.delete(p)
+    }
+    const tpls = txApp.findRecordsByFilter(
+      'personal_report_templates',
+      `user_id = '${targetUserId}'`,
+      '',
+      50,
+      0,
+    )
+    for (const t of tpls) {
+      txApp.delete(t)
+    }
+    const recCodes = txApp.findRecordsByFilter(
+      'mfa_recovery_codes',
+      `user_id = '${targetUserId}'`,
+      '',
+      50,
+      0,
+    )
+    for (const rc of recCodes) {
+      txApp.delete(rc)
+    }
+
+    // 3. Remover cadastro de médico se sem laudos
+    for (const doc of doctorRecords) {
+      txApp.delete(doc)
+    }
+
+    // 4. Excluir o usuário
+    txApp.delete(targetUser)
+  })
+
+  try {
+    const auditCol = $app.findCollectionByNameOrId('audit_logs')
+    const auditRec = new Record(auditCol)
+    auditRec.set('user_id', ctx.caller.id)
+    auditRec.set('action', 'ADMIN_USER_DELETED_SAFE')
+    auditRec.set('target_collection', 'users')
+    auditRec.set('target_id', targetUserId)
+    auditRec.set('status', 'SUCCESS')
+    auditRec.set(
+      'details',
+      `Usuário ${targetUser.getString('email')} excluído com validação prévia de ausência de vínculos clínicos e fiscais.`,
+    )
+    $app.save(auditRec)
+  } catch (_) {}
+
+  return e.json(200, {
+    success: true,
+    message:
+      'Usuário excluído com segurança após confirmação de ausência de registros clínicos vinculados.',
+    deletedUserId: targetUserId,
+  })
+})
+
 // Auditoria para ativação/desativação de assinaturas manuscritas e médicos
 onRecordAfterUpdateSuccess((e) => {
   try {

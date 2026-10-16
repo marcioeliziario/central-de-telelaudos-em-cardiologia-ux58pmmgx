@@ -349,6 +349,42 @@ export interface AuditLog {
   }
 }
 
+export interface AdminManagedUserOrg {
+  id: string
+  organization_id: string
+  organization_name: string
+  organization_type: string
+  role: UserRole
+  title_position?: string
+  is_active: boolean
+}
+
+export interface AdminManagedDoctorData {
+  id: string
+  crm: string
+  crm_state: string
+  rqe?: string
+  specialty?: string
+  is_active: boolean
+  notes?: string
+}
+
+export interface AdminManagedUserItem {
+  id: string
+  name?: string
+  email: string
+  phone?: string
+  is_active: boolean
+  is_primary_admin?: boolean
+  mfa_enabled?: boolean
+  mfa_enforced?: boolean
+  last_revoked_at?: string
+  created: string
+  updated?: string
+  organizations: AdminManagedUserOrg[]
+  doctor?: AdminManagedDoctorData | null
+}
+
 export interface AuthUser {
   id: string
   email: string
@@ -356,6 +392,7 @@ export interface AuthUser {
   phone?: string
   avatar?: string
   is_active?: boolean
+  is_primary_admin?: boolean
   mfa_enabled?: boolean
   mfa_enforced?: boolean
   mfa_enforced_role?: 'none' | 'admin' | 'cardiologist' | 'all'

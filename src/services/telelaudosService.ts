@@ -490,6 +490,28 @@ export const documentService = {
       { method: 'GET' },
     )
   },
+
+  // v0.0.35: Obter bytes de PDF protegido do PocketBase via requisição autenticada
+  async fetchDocumentFileBytes(docId: string, fileName: string): Promise<Uint8Array> {
+    const fileUrl = pb.files.getURL(
+      { id: docId, collectionName: 'report_documents' } as any,
+      fileName,
+    )
+    const token = pb.authStore.token
+    const headers: Record<string, string> = {}
+    if (token) {
+      headers['Authorization'] = token
+    }
+    const response = await fetch(fileUrl, {
+      method: 'GET',
+      headers,
+    })
+    if (!response.ok) {
+      throw new Error(`Falha ao carregar arquivo de PDF protegido (${response.status})`)
+    }
+    const arrayBuffer = await response.arrayBuffer()
+    return new Uint8Array(arrayBuffer)
+  },
 }
 
 // -------------------------------------------------------------

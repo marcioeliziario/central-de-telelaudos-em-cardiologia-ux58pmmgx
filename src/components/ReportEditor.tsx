@@ -66,9 +66,15 @@ import {
   Check,
 } from 'lucide-react'
 import { BirdIdSigningModal } from '@/components/BirdIdSigningModal'
+import { PdfViewerModal } from '@/components/PdfViewerModal'
 import { useAuth } from '@/contexts/AuthContext'
 import { personalTemplateService, doctorPreferenceService } from '@/services/telelaudosService'
-import { ReportMode, PersonalReportTemplate } from '@/types/telelaudos'
+import { multiProviderSigningService } from '@/services/multiProviderSigningService'
+import {
+  ReportMode,
+  PersonalReportTemplate,
+  SigningSessionActiveResponse,
+} from '@/types/telelaudos'
 
 interface ReportEditorProps {
   exam: ExamRequest
@@ -154,23 +160,36 @@ export default function ReportEditor({
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState<boolean>(false)
   const [isLoadingInitial, setIsLoadingInitial] = useState<boolean>(true)
 
-  // ETAPA 4A: Documentos (PDF) e Assinatura Digital
-  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState<boolean>(false)
-  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
-  const [previewMeta, setPreviewMeta] = useState<{
-    documentCode: string
-    version: number
-    sha256: string
-    fileSizeBytes: number
-    disclaimer: string
+  // v0.0.35: Documentos (PDF Nativo em Canvas) e Assinatura Digital Unificada
+  const [isPdfViewerOpen, setIsPdfViewerOpen] = useState<boolean>(false)
+  const [viewerPdfBytes, setViewerPdfBytes] = useState<Uint8Array | null>(null)
+  const [viewerPdfUrl, setViewerPdfUrl] = useState<string | null>(null)
+  const [viewerTitle, setViewerTitle] = useState<string>('Laudo de Eletrocardiograma')
+  const [viewerFileName, setViewerFileName] = useState<string>('Laudo-ECG.pdf')
+  const [viewerMeta, setViewerMeta] = useState<{
+    documentCode?: string
+    version?: number
+    sha256?: string
+    fileSizeBytes?: number
+    disclaimer?: string
+    isFinal?: boolean
   } | null>(null)
   const [isLoadingPreview, setIsLoadingPreview] = useState<boolean>(false)
-  const [isPreparing, setIsPreparing] = useState<boolean>(false)
-  const [prepareResult, setPrepareResult] = useState<{
-    documentCode: string
-    version: number
-    sha256: string
-  } | null>(null)
+
+  // Modal de Confirmação para Concluir Laudo (Ação 2)
+  const [isConfirmFinalizeOpen, setIsConfirmFinalizeOpen] = useState<boolean>(false)
+  const [isFinalizingReport, setIsFinalizingReport] = useState<boolean>(false)
+  const [finalizedDocument, setFinalizedDocument] = useState<any | null>(null)
+
+  // Painel Compacto de Assinatura Digital ICP-Brasil (Ação 3)
+  const [isSigningPanelOpen, setIsSigningPanelOpen] = useState<boolean>(false)
+  const [signingSession, setSigningSession] = useState<SigningSessionActiveResponse | null>(null)
+  const [isLoadingSigningSession, setIsLoadingSigningSession] = useState<boolean>(false)
+  const [selectedCertificateId, setSelectedCertificateId] = useState<string>('integra_bry')
+  const [isExecutingPadesSign, setIsExecutingPadesSign] = useState<boolean>(false)
+  const [signingBannerMessage, setSigningBannerMessage] = useState<string | null>(null)
+
+  // Histórico de versões e assinaturas do documento
   const [isVersionsModalOpen, setIsVersionsModalOpen] = useState<boolean>(false)
   const [documents, setDocuments] = useState<any[]>([])
   const [isLoadingDocs, setIsLoadingDocs] = useState<boolean>(false)
@@ -178,11 +197,11 @@ export default function ReportEditor({
   const [signatures, setSignatures] = useState<any[]>([])
   const [isLoadingSigs, setIsLoadingSigs] = useState<boolean>(false)
 
-  // ETAPA 6A: Modal Conector Bird ID Pro
+  // Adaptadores internos (Bird ID Pro e Bry)
   const [isBirdIdModalOpen, setIsBirdIdModalOpen] = useState<boolean>(false)
   const [activeReportDoc, setActiveReportDoc] = useState<any | null>(null)
 
-  // REQUISITO: Assinatura Digital Externa Opcional (ICP-Brasil)
+  // Assinatura Digital Externa (exportar/importar)
   const [isExternalSigningModalOpen, setIsExternalSigningModalOpen] = useState<boolean>(false)
   const [externalUploadedFileName, setExternalUploadedFileName] = useState<string | null>(null)
   const [externalUploadSuccess, setExternalUploadSuccess] = useState<boolean>(false)
@@ -580,57 +599,281 @@ export default function ReportEditor({
     }
   }
 
-  // ETAPA 4A: Visualizar prévia do PDF antes de iniciar a assinatura
-  const handlePreviewPdf = async () => {
+  // v0.0.35: Abrir Visualizador Nativo de PDF (Canvas/PDF.js) com Prévia ou Documento Definitivo
+  const handleOpenPreviewInPdfViewer = async () => {
     setIsLoadingPreview(true)
     try {
       const res = await documentService.getPreview(exam.id)
       if (res.success && res.pdfRawString) {
-        // Converte a string PDF recebida em Blob para renderização local (sem URL pública)
         const bytes = new Uint8Array(res.pdfRawString.length)
         for (let i = 0; i < res.pdfRawString.length; i++) {
           bytes[i] = res.pdfRawString.charCodeAt(i) & 0xff
         }
-        const blob = new Blob([bytes], { type: 'application/pdf' })
-        const url = URL.createObjectURL(blob)
-        setPreviewPdfUrl(url)
-        setPreviewMeta({
+        setViewerPdfBytes(bytes)
+        setViewerPdfUrl(null)
+        setViewerTitle('Prévia do Laudo em PDF (Rascunho)')
+        setViewerFileName(`Previa-${res.documentCode || 'ECG'}.pdf`)
+        setViewerMeta({
           documentCode: res.documentCode,
           version: res.version,
           sha256: res.sha256,
           fileSizeBytes: res.fileSizeBytes,
-          disclaimer: res.disclaimer,
+          disclaimer: res.disclaimer || 'DOCUMENTO NÃO ASSINADO. SEM VALIDADE COMO LAUDO FINAL.',
+          isFinal: false,
         })
-        setIsPreviewModalOpen(true)
+        setIsPdfViewerOpen(true)
+      } else {
+        alert('Não foi possível obter os dados da prévia do laudo.')
       }
     } catch (err: any) {
-      alert(`Erro ao gerar prévia do PDF: ${err.message}`)
+      alert(`Erro ao carregar prévia do PDF: ${err.message || err}`)
     } finally {
       setIsLoadingPreview(false)
     }
   }
 
-  // ETAPA 4A: Preparar PDF definitivo para assinatura digital (bloqueia a versão)
-  const handlePrepareSignature = async () => {
-    if (
-      !confirm(
-        'Esta ação gera o PDF definitivo desta versão, calcula o hash SHA-256 e BLOQUEIA o conteúdo contra alterações. Para corrigir depois, será criada uma NOVA versão. Confirmar?',
-      )
-    ) {
+  // Visualizar PDF definitivo de um documento específico no PdfViewerModal
+  const handleOpenDocumentInPdfViewer = async (doc: any) => {
+    try {
+      setIsLoadingPreview(true)
+      let bytes: Uint8Array | null = null
+
+      if (doc.pdf_file) {
+        try {
+          bytes = await documentService.fetchDocumentFileBytes(doc.id, doc.pdf_file)
+        } catch (fetchErr) {
+          console.warn('Aviso ao carregar bytes protegidos do documento:', fetchErr)
+        }
+      }
+
+      // Se não obteve bytes do arquivo direto, carregar via preview com snapshot correspondente
+      if (!bytes) {
+        const res = await documentService.getPreview(exam.id)
+        if (res.pdfRawString) {
+          bytes = new Uint8Array(res.pdfRawString.length)
+          for (let i = 0; i < res.pdfRawString.length; i++) {
+            bytes[i] = res.pdfRawString.charCodeAt(i) & 0xff
+          }
+        }
+      }
+
+      setViewerPdfBytes(bytes)
+      setViewerPdfUrl(null)
+      setViewerTitle(`Laudo Concluído - ${doc.document_code}`)
+      setViewerFileName(`${doc.document_code || 'Laudo-Concluido'}.pdf`)
+      setViewerMeta({
+        documentCode: doc.document_code,
+        version: doc.version,
+        sha256: doc.file_hash_sha256,
+        fileSizeBytes: doc.file_size_bytes,
+        disclaimer: 'Laudo Concluído e auditado. Pronto para assinatura e liberação.',
+        isFinal: true,
+      })
+      setIsPdfViewerOpen(true)
+    } catch (err: any) {
+      alert(`Erro ao abrir documento no visualizador: ${err.message || err}`)
+    } finally {
+      setIsLoadingPreview(false)
+    }
+  }
+
+  // v0.0.35 AÇÃO 2: Concluir Laudo Médico (Submissão + Geração do PDF Definitivo)
+  const handleExecuteFinalizeReport = async () => {
+    if (!freeTextConclusion.trim()) {
+      alert('A conclusão eletrocardiográfica é obrigatória conforme a Diretriz SBC.')
       return
     }
-    setIsPreparing(true)
+    if (!freeTextDescription.trim()) {
+      alert('A descrição do traçado é obrigatória conforme a Diretriz SBC.')
+      return
+    }
+
+    setIsFinalizingReport(true)
     try {
-      const res = await documentService.prepareForSignature(exam.id)
-      setPrepareResult({
-        documentCode: res.documentCode,
-        version: res.version,
-        sha256: res.sha256,
-      })
+      // 1. Submeter elaboração clínica (ecg_reports)
+      const payload = {
+        report_mode: reportMode,
+        heart_rate: reportMode === 'free_text' ? null : heartRate ? Number(heartRate) : null,
+        cardiac_rhythm: reportMode === 'free_text' ? '' : cardiacRhythm,
+        electrical_axis: reportMode === 'free_text' ? '' : electricalAxis,
+        pr_interval_ms:
+          reportMode === 'free_text' ? null : prIntervalMs ? Number(prIntervalMs) : null,
+        qrs_duration_ms:
+          reportMode === 'free_text' ? null : qrsDurationMs ? Number(qrsDurationMs) : null,
+        qt_interval_ms:
+          reportMode === 'free_text' ? null : qtIntervalMs ? Number(qtIntervalMs) : null,
+        qtc_interval_ms:
+          reportMode === 'free_text' ? null : qtcIntervalMs ? Number(qtcIntervalMs) : null,
+        p_wave_description: reportMode === 'free_text' ? '' : pWaveDesc,
+        av_conduction_alterations: reportMode === 'free_text' ? '' : avConduction,
+        iv_conduction_alterations: reportMode === 'free_text' ? '' : ivConduction,
+        repolarization_alterations: reportMode === 'free_text' ? '' : repolarization,
+        q_waves_findings: reportMode === 'free_text' ? '' : qWaves,
+        free_text_description: freeTextDescription,
+        free_text_conclusion: freeTextConclusion,
+        technical_quality_notes: technicalQuality,
+        has_critical_findings: hasCriticalFindingRegistered,
+      }
+      await examService.submitReport(exam.id, payload)
+
+      // 2. Preparar PDF definitivo em report_documents com hash SHA-256 e assinatura manuscrita ativa
+      const prepRes = await documentService.prepareForSignature(exam.id)
+      setFinalizedDocument(
+        prepRes.document || {
+          document_code: prepRes.documentCode,
+          version: prepRes.version,
+          file_hash_sha256: prepRes.sha256,
+          generated_at: new Date().toISOString(),
+        },
+      )
+      setActiveReportDoc(prepRes.document)
+
+      // Atualizar lista de documentos e assinaturas
+      const [docs, sigs] = await Promise.all([
+        documentService.getDocumentsForExam(exam.id),
+        documentService.getSignaturesForExam(exam.id),
+      ])
+      setDocuments(docs)
+      setSignatures(sigs)
+
+      setIsConfirmFinalizeOpen(false)
+      alert(
+        `Laudo concluído com sucesso! Documento definitivo ${prepRes.documentCode} (v${prepRes.version}.0) gerado com hash SHA-256 e incorporação de assinatura manuscrita ativa. Você já pode visualizá-lo ou prosseguir com a assinatura digital ICP-Brasil.`,
+      )
     } catch (err: any) {
-      alert(`Erro ao preparar documento para assinatura: ${err.message}`)
+      alert(`Erro ao concluir laudo médico: ${err.message || err}`)
     } finally {
-      setIsPreparing(false)
+      setIsFinalizingReport(false)
+    }
+  }
+
+  // v0.0.35 AÇÃO 3: Consultar sessão e abrir painel compacto de assinatura digital
+  const handleOpenSigningFlow = async () => {
+    setIsSigningPanelOpen(true)
+    setIsLoadingSigningSession(true)
+    setSigningBannerMessage(null)
+    try {
+      // Carregar documento mais recente se ainda não carregado
+      let doc = activeReportDoc
+      if (!doc) {
+        const docs = await documentService.getDocumentsForExam(exam.id)
+        setDocuments(docs)
+        if (docs && docs.length > 0) {
+          doc = docs[0]
+          setActiveReportDoc(doc)
+          setFinalizedDocument(doc)
+        }
+      }
+
+      // Consultar sessão ativa do médico
+      const sessionRes = await multiProviderSigningService.getActiveSession()
+      setSigningSession(sessionRes)
+
+      if (!sessionRes || !sessionRes.hasActiveSession || sessionRes.isExpired) {
+        setSigningBannerMessage(
+          'O documento permanece como Laudo Concluído, aguardando assinatura digital para liberação clínica.',
+        )
+      } else {
+        setSigningBannerMessage(null)
+      }
+
+      // Carregar assinaturas existentes
+      const sigs = await documentService.getSignaturesForExam(exam.id)
+      setSignatures(sigs)
+    } catch (err: any) {
+      console.error('Erro ao verificar sessão de assinatura:', err)
+      setSigningBannerMessage(
+        'O documento permanece como Laudo Concluído, aguardando assinatura digital para liberação clínica.',
+      )
+    } finally {
+      setIsLoadingSigningSession(false)
+    }
+  }
+
+  // Executar Assinatura Digital ICP-Brasil (PAdES) quando sessão estiver ativa
+  const handleExecutePadesSignature = async () => {
+    if (!activeReportDoc && documents.length === 0) {
+      alert('Conclua o laudo primeiro para gerar o PDF definitivo antes de assinar.')
+      return
+    }
+
+    const targetDocId = activeReportDoc?.id || documents[0]?.id
+    if (!targetDocId) {
+      alert('Documento não localizado para assinatura.')
+      return
+    }
+
+    if (!signingSession || !signingSession.hasActiveSession || signingSession.isExpired) {
+      alert(
+        'Sessão ICP-Brasil inativa ou pendente de autorização. O laudo permanece como Laudo Concluído, aguardando assinatura digital para liberação clínica.',
+      )
+      return
+    }
+
+    setIsExecutingPadesSign(true)
+    try {
+      const res = await multiProviderSigningService.signDocument({
+        documentId: targetDocId,
+        providerKey: selectedCertificateId,
+      })
+
+      if (res.success) {
+        // Atualizar assinaturas
+        const updatedSigs = await documentService.getSignaturesForExam(exam.id)
+        setSignatures(updatedSigs)
+
+        if (res.status === 'VALIDADA' && res.isClinicallyReleased) {
+          alert('Assinatura PAdES ICP-Brasil VALIDADA e liberação clínica homologada com sucesso!')
+          if (onReportSubmitted) {
+            onReportSubmitted()
+          }
+        } else {
+          alert(
+            `Assinatura processada com status ${res.status}. Liberação clínica: ${
+              res.isClinicallyReleased ? 'Autorizada' : 'Bloqueada até validação criptográfica'
+            }.`,
+          )
+        }
+      } else {
+        alert(`Falha ao assinar documento: ${res.message}`)
+      }
+    } catch (err: any) {
+      alert(`Erro durante assinatura digital: ${err.message || err}`)
+    } finally {
+      setIsExecutingPadesSign(false)
+    }
+  }
+
+  // Iniciar / Renovar autorização de sessão ICP-Brasil
+  const handleAuthorizeSigningSession = async () => {
+    try {
+      setIsLoadingSigningSession(true)
+      const initRes = await multiProviderSigningService.initSession({
+        providerKey: selectedCertificateId,
+        lifetimeSeconds: 3600,
+        scope: 'signature_session',
+      })
+
+      if (initRes.success) {
+        if (initRes.authUrl && initRes.authUrl !== '#' && !initRes.isSimulated) {
+          window.open(initRes.authUrl, '_blank', 'width=600,height=700')
+        }
+        // Processar callback de homologação/ambiente caso em modo seguro
+        const cbRes = await multiProviderSigningService.processCallback({
+          state: initRes.state,
+          isSimulated: initRes.isSimulated,
+        })
+        if (cbRes.success) {
+          const updatedSession = await multiProviderSigningService.getActiveSession()
+          setSigningSession(updatedSession)
+          setSigningBannerMessage(null)
+          alert('Sessão de assinatura ICP-Brasil autorizada com sucesso!')
+        }
+      }
+    } catch (err: any) {
+      alert(`Falha ao autorizar sessão de assinatura: ${err.message || err}`)
+    } finally {
+      setIsLoadingSigningSession(false)
     }
   }
 
@@ -1216,177 +1459,416 @@ export default function ReportEditor({
           </div>
         </div>
 
-        {/* ETAPA 4A: Barra de Documentos e Assinatura Digital Sobria */}
-        <div className="p-3.5 bg-[#F7F6F4] rounded-xl border border-[#E3E6E8] flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2.5">
-            <FileText className="w-4 h-4 text-[#4A90D9] shrink-0" />
-            <div>
-              <span className="font-bold text-[#2F3942]">
-                Documento Médico (PDF) & Assinatura Digital
-              </span>
-              <p className="text-[11px] text-[#6F7780]">
-                Sequência clínica estrita: 1. Rascunho → 2. Concluir Conteúdo → 3. Assinatura
-                Digital ICP-Brasil → 4. Liberação
-              </p>
+        {/* v0.0.35: BARRA UNIFICADA COM AS TRÊS AÇÕES PRINCIPAIS */}
+        <div className="p-4 bg-white rounded-xl border border-[#E3E6E8] shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-[#E3E6E8] pb-3">
+            <div className="flex items-center gap-2">
+              <FileCheck className="w-4 h-4 text-[#4A90D9]" />
+              <div>
+                <span className="font-bold text-xs text-[#2F3942]">Fluxo Clínico Centralizado</span>
+                <span className="text-[11px] text-[#6F7780] ml-2">
+                  Três etapas claras: Rascunho • Conclusão • Assinatura ICP-Brasil
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px]">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleOpenPreviewInPdfViewer}
+                disabled={isLoadingPreview}
+                className="h-7 text-xs text-[#4A90D9] hover:bg-[#4A90D9]/10 gap-1 px-2"
+                title="Visualizar prévia em PDF direto no visualizador nativo Canvas"
+              >
+                {isLoadingPreview ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Eye className="w-3 h-3" />
+                )}
+                <span>Prévia em PDF</span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleOpenVersions}
+                className="h-7 text-xs text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4] gap-1 px-2"
+              >
+                <Layers className="w-3 h-3" />
+                <span>Versões ({documents.length})</span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleOpenSignatureStatus}
+                className="h-7 text-xs text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4] gap-1 px-2"
+              >
+                <ShieldCheck className="w-3 h-3" />
+                <span>Auditoria ({signatures.length})</span>
+              </Button>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handlePreviewPdf}
-              disabled={isLoadingPreview}
-              className="h-8 text-xs gap-1.5 border-[#E3E6E8] bg-white text-[#2F3942] hover:bg-[#F7F6F4]"
-              title="Conferir o documento completo antes de iniciar a assinatura"
-            >
-              {isLoadingPreview ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <Eye className="w-3.5 h-3.5 text-[#4A90D9]" />
-              )}
-              <span>Visualizar PDF</span>
-            </Button>
+          {/* AS TRÊS AÇÕES PRINCIPAIS BEM DISTINGUÍVEIS */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* AÇÃO 1: SALVAR RASCUNHO */}
+            <div className="p-3 bg-[#F7F6F4]/60 rounded-lg border border-[#E3E6E8] flex flex-col justify-between gap-2">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-[#2F3942] flex items-center gap-1.5">
+                    <Save className="w-3.5 h-3.5 text-[#6F7780]" />
+                    <span>1. Salvar Rascunho</span>
+                  </span>
+                  <Badge variant="outline" className="text-[10px] bg-white border-[#E3E6E8]">
+                    {saveStatus === 'saved' ? 'Salvo' : 'Automático'}
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-[#6F7780] leading-snug">
+                  Grava em rascunhos sem gerar documento definitivo nem bloquear a edição.
+                </p>
+              </div>
 
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handlePrepareSignature}
-              disabled={isPreparing}
-              className="h-8 text-xs gap-1.5 border-[#4A90D9]/40 text-[#4A90D9] bg-white hover:bg-[#4A90D9]/5 font-semibold"
-              title="Gerar PDF definitivo com hash SHA-256 e bloquear esta versão"
-            >
-              {isPreparing ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-              ) : (
-                <PenTool className="w-3.5 h-3.5" />
-              )}
-              <span>Preparar PDF para Assinatura</span>
-            </Button>
-
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleOpenVersions}
-              className="h-8 text-xs gap-1.5 border-[#E3E6E8] bg-white text-[#2F3942] hover:bg-[#F7F6F4]"
-              title="Consultar versões já geradas deste documento"
-            >
-              <Layers className="w-3.5 h-3.5 text-[#6F7780]" />
-              <span>Versões</span>
-            </Button>
-
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleOpenSignatureStatus}
-              className="h-8 text-xs gap-1.5 border-[#E3E6E8] bg-white text-[#2F3942] hover:bg-[#F7F6F4]"
-              title="Visualizar status da assinatura digital"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Status Assinatura</span>
-            </Button>
-
-            {/* Conector Bird ID Pro com Paleta Oficial */}
-            <Button
-              size="sm"
-              onClick={async () => {
-                try {
-                  const docs = await documentService.getDocumentsForExam(exam.id)
-                  if (docs && docs.length > 0) {
-                    setActiveReportDoc(docs[0])
-                    setIsBirdIdModalOpen(true)
-                  } else {
-                    alert(
-                      'Prepare o PDF para assinatura primeiro antes de abrir o conector Bird ID Pro.',
-                    )
-                  }
-                } catch (err: any) {
-                  alert(`Erro ao carregar documento: ${err.message}`)
-                }
-              }}
-              className="h-8 text-xs gap-1.5 bg-[#4A90D9] hover:bg-[#3b7dc2] text-white shadow-xs font-semibold"
-              title="Conector de Assinatura Digital Bird ID Pro (Soluti CESS)"
-            >
-              <ShieldCheck className="w-3.5 h-3.5 text-white" />
-              <span>Assinador Bird ID Pro</span>
-            </Button>
-
-            {/* Assinatura Digital Externa Opcional */}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                try {
-                  const docs = await documentService.getDocumentsForExam(exam.id)
-                  if (docs && docs.length > 0) {
-                    setActiveReportDoc(docs[0])
-                    setIsExternalSigningModalOpen(true)
-                  } else {
-                    alert(
-                      'Prepare o PDF para assinatura primeiro. O PDF gerado já conterá sua assinatura manuscrita e poderá ser baixado para assinatura externa.',
-                    )
-                  }
-                } catch (err: any) {
-                  alert(`Erro ao buscar documento: ${err.message}`)
-                }
-              }}
-              className="h-8 text-xs gap-1.5 border-[#E3E6E8] text-[#2F3942] bg-white hover:bg-[#F7F6F4] font-medium"
-              title="Baixar PDF para assinatura externa com certificado ICP-Brasil e importar de volta"
-            >
-              <Download className="w-3.5 h-3.5 text-[#6F7780]" />
-              <span>Assinatura Externa</span>
-            </Button>
-          </div>
-        </div>
-
-        {prepareResult && (
-          <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-300 text-xs text-emerald-900 space-y-1">
-            <div className="font-bold flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>Documento preparado para assinatura digital</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={performSaveDraft}
+                disabled={saveStatus === 'saving'}
+                className="w-full h-8 text-xs border-[#E3E6E8] bg-white text-[#2F3942] hover:bg-slate-50 font-medium"
+              >
+                {saveStatus === 'saving' ? (
+                  <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                ) : (
+                  <Save className="w-3 h-3 mr-1 text-[#6F7780]" />
+                )}
+                <span>Salvar Agora</span>
+              </Button>
             </div>
-            <p>
-              Código: <span className="font-mono">{prepareResult.documentCode}</span> • Versão:{' '}
-              <span className="font-mono">{prepareResult.version}.0</span> • SHA-256:{' '}
-              <span className="font-mono break-all">{prepareResult.sha256}</span>
-            </p>
-            <p className="text-[11px]">
-              Esta versão está BLOQUEADA para alterações. Qualquer correção gerará uma nova versão
-              sem sobrescrever a anterior. Status da assinatura: NAO_INICIADA (liberação clínica
-              bloqueada).
-            </p>
-          </div>
-        )}
 
-        {/* Rodapé: Envio para Aguardando Assinatura */}
-        <div className="pt-3 border-t border-[#E3E6E8] flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="text-[11px] text-[#6F7780] flex items-center gap-1.5">
-            <Lock className="w-3.5 h-3.5 text-[#6F7780]" />
-            <span>
-              Ao concluir, o exame passará para{' '}
-              <strong className="text-[#2F3942]">AGUARDANDO_ASSINATURA</strong> (não liberado
-              diretamente sem assinatura válida).
-            </span>
+            {/* AÇÃO 2: CONCLUIR LAUDO */}
+            <div className="p-3 bg-[#4A90D9]/5 rounded-lg border border-[#4A90D9]/30 flex flex-col justify-between gap-2">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-[#2F3942] flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-[#4A90D9]" />
+                    <span>2. Concluir Laudo</span>
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-[#4A90D9]/10 text-[#4A90D9] border-[#4A90D9]/30"
+                  >
+                    Definitivo
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-[#6F7780] leading-snug">
+                  Gera PDF definitivo com hash SHA-256 e assinatura manuscrita ativa no rodapé.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  onClick={() => setIsConfirmFinalizeOpen(true)}
+                  className="flex-1 h-8 text-xs bg-[#4A90D9] hover:bg-[#3b7dc2] text-white font-semibold shadow-xs"
+                >
+                  <Send className="w-3 h-3 mr-1" />
+                  <span>Concluir Laudo</span>
+                </Button>
+
+                {(finalizedDocument || documents.length > 0) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleOpenDocumentInPdfViewer(finalizedDocument || documents[0])}
+                    className="h-8 px-2.5 text-xs border-[#4A90D9]/40 text-[#4A90D9] bg-white hover:bg-[#4A90D9]/10"
+                    title="Visualizar PDF definitivo concluído"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* AÇÃO 3: ASSINAR E LIBERAR */}
+            <div className="p-3 bg-[#2F3942]/5 rounded-lg border border-[#2F3942]/30 flex flex-col justify-between gap-2">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold text-[#2F3942] flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>3. Assinar e Liberar</span>
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-emerald-50 text-emerald-800 border-emerald-300"
+                  >
+                    ICP-Brasil
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-[#6F7780] leading-snug">
+                  Aplica PAdES ICP-Brasil e libera clinicamente após validação criptográfica.
+                </p>
+              </div>
+
+              <Button
+                size="sm"
+                onClick={handleOpenSigningFlow}
+                className="w-full h-8 text-xs bg-[#2F3942] hover:bg-[#1f262c] text-white font-semibold shadow-xs"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 mr-1 text-emerald-400" />
+                <span>Painel de Assinatura</span>
+              </Button>
+            </div>
           </div>
 
-          <Button
-            size="sm"
-            onClick={handleSubmitReport}
-            disabled={isSubmittingReport}
-            className="w-full sm:w-auto bg-[#2F3942] hover:bg-[#1f262c] text-white text-xs font-semibold px-4 h-9 shadow-xs transition-colors"
-          >
-            {isSubmittingReport ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
-                <span>Enviando Laudo...</span>
-              </>
-            ) : (
-              <>
-                <Send className="w-3.5 h-3.5 mr-1.5 text-[#4A90D9]" />
-                <span>Concluir Elaboração do Laudo</span>
-              </>
-            )}
-          </Button>
+          {/* PAINEL COMPACTO RETRÁTIL DE ASSINATURA DIGITAL */}
+          {isSigningPanelOpen && (
+            <div className="mt-4 p-4 bg-[#F7F6F4] rounded-xl border-2 border-[#4A90D9]/30 space-y-3.5 transition-all">
+              <div className="flex items-center justify-between border-b border-[#E3E6E8] pb-2">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-[#4A90D9]" />
+                  <span className="font-bold text-xs text-[#2F3942]">
+                    Painel Compacto de Assinatura ICP-Brasil
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setIsSigningPanelOpen(false)}
+                  className="h-6 text-[11px] text-[#6F7780] hover:text-[#2F3942]"
+                >
+                  Recolher Painel
+                </Button>
+              </div>
+
+              {/* Situação da Sessão e Certificado Selecionado */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                {/* Certificado */}
+                <div className="p-2.5 bg-white rounded-lg border border-[#E3E6E8] space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-[#6F7780]">
+                    Certificado Selecionado
+                  </span>
+                  <Select
+                    value={selectedCertificateId}
+                    onValueChange={(v) => setSelectedCertificateId(v)}
+                  >
+                    <SelectTrigger className="h-7 text-xs bg-white border-[#E3E6E8]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="integra_bry" className="text-xs">
+                        Certificado em Nuvem (Integra Bry)
+                      </SelectItem>
+                      <SelectItem value="birdid_pro" className="text-xs">
+                        Bird ID Pro (Soluti CESS)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Situação da Sessão */}
+                <div className="p-2.5 bg-white rounded-lg border border-[#E3E6E8] space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-[#6F7780]">
+                    Situação da Sessão
+                  </span>
+                  <div className="flex items-center gap-2 mt-1">
+                    {isLoadingSigningSession ? (
+                      <Badge variant="outline" className="text-[10px] gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>Verificando...</span>
+                      </Badge>
+                    ) : signingSession?.hasActiveSession && !signingSession.isExpired ? (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-emerald-50 text-emerald-800 border-emerald-300 gap-1 font-semibold"
+                      >
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        <span>Sessão Ativa</span>
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-amber-50 text-amber-800 border-amber-300 gap-1 font-semibold"
+                      >
+                        <AlertTriangle className="w-3 h-3 text-amber-600" />
+                        <span>Pendente / Inativa</span>
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Validade / Renovação */}
+                <div className="p-2.5 bg-white rounded-lg border border-[#E3E6E8] space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-[#6F7780]">
+                    Validade da Autorização
+                  </span>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-xs text-[#2F3942] font-medium truncate">
+                      {signingSession?.expiresAt
+                        ? new Date(signingSession.expiresAt).toLocaleTimeString('pt-BR')
+                        : 'Não autorizada'}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleAuthorizeSigningSession}
+                      disabled={isLoadingSigningSession}
+                      className="h-6 text-[10px] px-2 border-[#4A90D9]/30 text-[#4A90D9] hover:bg-[#4A90D9]/10"
+                    >
+                      {signingSession?.hasActiveSession ? 'Renovar' : 'Autorizar'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* BANNER OBJETIVO DE PENDÊNCIA (SEM FINGIR ASSINATURA) */}
+              {signingBannerMessage && (
+                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-amber-950 text-xs flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span className="font-medium">{signingBannerMessage}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleAuthorizeSigningSession}
+                    className="h-7 text-xs border-amber-300 bg-white text-amber-950 font-semibold hover:bg-amber-100 shrink-0"
+                  >
+                    Autorizar Sessão ICP-Brasil
+                  </Button>
+                </div>
+              )}
+
+              {/* SITUAÇÃO DO DOCUMENTO NOS TRÊS ESTADOS EXPLÍCITOS */}
+              <div className="p-3 bg-white rounded-lg border border-[#E3E6E8] space-y-2">
+                <span className="text-[10px] uppercase font-bold text-[#6F7780] block">
+                  Situação Cadastral e Probatória do Documento
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  {/* Estado 1 */}
+                  <div
+                    className={`p-2 rounded border ${
+                      !finalizedDocument && documents.length === 0
+                        ? 'bg-amber-50 border-amber-300 font-semibold text-amber-950'
+                        : 'bg-slate-50 border-slate-200 text-[#6F7780]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span>1. Prévia de Rascunho</span>
+                    </div>
+                    <p className="text-[10px] mt-1">Sem assinatura, sem validade jurídica.</p>
+                  </div>
+
+                  {/* Estado 2 */}
+                  <div
+                    className={`p-2 rounded border ${
+                      (finalizedDocument || documents.length > 0) &&
+                      !signatures.some((s) => s.signature_status === 'VALIDADA')
+                        ? 'bg-sky-50 border-sky-300 font-semibold text-sky-950'
+                        : 'bg-slate-50 border-slate-200 text-[#6F7780]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-sky-500" />
+                      <span>2. Laudo Concluído</span>
+                    </div>
+                    <p className="text-[10px] mt-1">
+                      PDF definitivo com assinatura manuscrita ativa.
+                    </p>
+                  </div>
+
+                  {/* Estado 3 */}
+                  <div
+                    className={`p-2 rounded border ${
+                      signatures.some((s) => s.signature_status === 'VALIDADA')
+                        ? 'bg-emerald-50 border-emerald-300 font-semibold text-emerald-950'
+                        : 'bg-slate-50 border-slate-200 text-[#6F7780]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      <span>3. Laudo Assinado</span>
+                    </div>
+                    <p className="text-[10px] mt-1">
+                      PAdES validado e liberação clínica homologada.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* AÇÕES DE ASSINATURA COMPACTAS */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <div className="flex items-center gap-2">
+                  {/* Opção de Assinador Externo */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const doc = finalizedDocument || documents[0]
+                      if (!doc) {
+                        alert('Conclua o laudo primeiro para gerar o PDF definitivo.')
+                        return
+                      }
+                      setActiveReportDoc(doc)
+                      setIsExternalSigningModalOpen(true)
+                    }}
+                    className="h-8 text-xs border-[#E3E6E8] bg-white text-[#2F3942] hover:bg-slate-50"
+                  >
+                    <Download className="w-3.5 h-3.5 mr-1 text-[#6F7780]" />
+                    <span>Assinar Externamente (Exportar PDF)</span>
+                  </Button>
+
+                  {/* Conector Bird ID Pro caso selecionado */}
+                  {selectedCertificateId === 'birdid_pro' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const doc = finalizedDocument || documents[0]
+                        if (!doc) {
+                          alert('Conclua o laudo primeiro para gerar o PDF definitivo.')
+                          return
+                        }
+                        setActiveReportDoc(doc)
+                        setIsBirdIdModalOpen(true)
+                      }}
+                      className="h-8 text-xs border-[#4A90D9]/30 text-[#4A90D9] bg-white hover:bg-[#4A90D9]/10"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+                      <span>Abrir Modal Bird ID Pro</span>
+                    </Button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleExecutePadesSignature}
+                    disabled={
+                      isExecutingPadesSign ||
+                      !signingSession?.hasActiveSession ||
+                      signingSession.isExpired ||
+                      (!finalizedDocument && documents.length === 0)
+                    }
+                    className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs"
+                  >
+                    {isExecutingPadesSign ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                        <span>Assinando PAdES...</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
+                        <span>Executar Assinatura Digital e Liberar</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </Card>
 
@@ -1780,32 +2262,40 @@ export default function ReportEditor({
         </DialogContent>
       </Dialog>
 
-      {/* MODAL 4: CONFIRMAÇÃO DE SUBMISSÃO DO LAUDO (AGUARDANDO ASSINATURA) */}
-      <Dialog open={submissionSuccessModal} onOpenChange={setSubmissionSuccessModal}>
+      {/* MODAL 4: CONFIRMAÇÃO DE CONCLUSÃO DO LAUDO (AÇÃO 2) */}
+      <Dialog open={isConfirmFinalizeOpen} onOpenChange={setIsConfirmFinalizeOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-sm font-bold text-emerald-800 flex items-center gap-1.5">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-              <span>Laudo Concluído com Sucesso!</span>
+            <DialogTitle className="text-sm font-bold text-[#2F3942] flex items-center gap-2">
+              <CheckCircle2 className="w-5 h-5 text-[#4A90D9]" />
+              <span>Concluir Elaboração do Laudo</span>
             </DialogTitle>
-            <DialogDescription className="text-xs text-slate-600">
-              O laudo estruturado de ECG foi validado no servidor e avançou para a situação{' '}
-              <strong>AGUARDANDO_ASSINATURA</strong>.
+            <DialogDescription className="text-xs text-[#6F7780]">
+              Esta ação finaliza a elaboração médica, grava a versão clínica definitiva e gera o
+              documento PDF com hash criptográfico SHA-256.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-2 text-slate-700">
-            <p>Conforme as diretrizes desta etapa de desenvolvimento:</p>
-            <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-600">
+          <div className="p-3.5 bg-[#F7F6F4] rounded-lg border border-[#E3E6E8] text-xs space-y-2 text-[#2F3942]">
+            <p className="font-semibold">O que acontecerá ao confirmar:</p>
+            <ul className="list-disc pl-4 space-y-1 text-[11px] text-[#6F7780]">
               <li>
-                O laudo NÃO foi assinado digitalmente nem liberado publicamente como concluído.
+                O laudo médico avança para a situação <strong>AGUARDANDO_ASSINATURA</strong>.
               </li>
               <li>
-                A assinatura digital ICP-Brasil e emissão final em PDF estão expressamente
-                reservadas para etapas futuras.
+                O documento PDF definitivo é gerado e registrado em <code>report_documents</code>.
               </li>
               <li>
-                Todos os dados foram preservados e o evento foi registrado na trilha de auditoria.
+                A assinatura manuscrita ativa do cardiologista é incorporada fisicamente no rodapé
+                (quando cadastrada).
+              </li>
+              <li>
+                Você poderá imediatamente <strong>visualizar em PDF</strong> e{' '}
+                <strong>baixar o laudo concluído</strong> sem exigir assinatura digital ICP-Brasil.
+              </li>
+              <li>
+                A liberação clínica definitiva para a clínica permanece protegida até a assinatura
+                ICP-Brasil.
               </li>
             </ul>
           </div>
@@ -1813,76 +2303,44 @@ export default function ReportEditor({
           <DialogFooter>
             <Button
               size="sm"
-              className="bg-[#0E4C92] text-xs text-white"
-              onClick={() => {
-                setSubmissionSuccessModal(false)
-                if (onReportSubmitted) onReportSubmitted()
-              }}
+              variant="outline"
+              disabled={isFinalizingReport}
+              onClick={() => setIsConfirmFinalizeOpen(false)}
             >
-              Entendido, retornar à Fila
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              disabled={isFinalizingReport}
+              onClick={handleExecuteFinalizeReport}
+              className="bg-[#4A90D9] hover:bg-[#3b7dc2] text-white text-xs font-semibold"
+            >
+              {isFinalizingReport ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  <span>Concluindo e Gerando PDF...</span>
+                </>
+              ) : (
+                <>
+                  <Send className="w-3.5 h-3.5 mr-1.5" />
+                  <span>Confirmar e Concluir Laudo</span>
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* MODAL 5 (ETAPA 4A): PRÉVIA DO PDF DO LAUDO */}
-      <Dialog open={isPreviewModalOpen} onOpenChange={setIsPreviewModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-sm font-bold flex items-center gap-1.5">
-              <FileText className="w-4 h-4 text-[#0E4C92]" />
-              <span>Prévia do Documento (PDF)</span>
-            </DialogTitle>
-            <DialogDescription className="text-xs text-slate-600">
-              Conferência integral do laudo ANTES de iniciar a assinatura digital.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="p-2.5 bg-amber-50 rounded border border-amber-300 text-xs text-amber-950 font-bold flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-            <span>
-              {previewMeta?.disclaimer || 'DOCUMENTO NÃO ASSINADO. SEM VALIDADE COMO LAUDO FINAL.'}
-            </span>
-          </div>
-
-          {previewPdfUrl && (
-            <iframe
-              src={previewPdfUrl}
-              title="Prévia do Laudo em PDF"
-              className="w-full h-[55vh] border border-slate-200 rounded"
-            />
-          )}
-
-          {previewMeta && (
-            <div className="p-2.5 bg-slate-50 rounded border border-slate-200 text-[11px] text-slate-700 space-y-1">
-              <div className="flex flex-wrap gap-x-4 gap-y-1">
-                <span>
-                  Código: <span className="font-mono">{previewMeta.documentCode}</span>
-                </span>
-                <span>
-                  Versão: <span className="font-mono">{previewMeta.version}.0</span>
-                </span>
-                <span>
-                  Tamanho: <span className="font-mono">{previewMeta.fileSizeBytes} bytes</span>
-                </span>
-              </div>
-              <div>
-                SHA-256 (prévia): <span className="font-mono break-all">{previewMeta.sha256}</span>
-              </div>
-              <p className="text-slate-500">
-                A prévia NÃO contém carimbo, imagem de assinatura ou qualquer representação de
-                assinatura digital válida.
-              </p>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button size="sm" variant="outline" onClick={() => setIsPreviewModalOpen(false)}>
-              Fechar Prévia
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* v0.0.35: NOVO VISUALIZADOR DE PDF EM CANVAS (SEM SUB-IFRAME) */}
+      <PdfViewerModal
+        isOpen={isPdfViewerOpen}
+        onClose={() => setIsPdfViewerOpen(false)}
+        pdfData={viewerPdfBytes}
+        pdfUrl={viewerPdfUrl}
+        title={viewerTitle}
+        fileName={viewerFileName}
+        metadata={viewerMeta}
+      />
 
       {/* MODAL 6 (ETAPA 4A): VERSÕES DO DOCUMENTO */}
       <Dialog open={isVersionsModalOpen} onOpenChange={setIsVersionsModalOpen}>
@@ -2096,12 +2554,16 @@ export default function ReportEditor({
                 <Button
                   size="sm"
                   onClick={() => {
-                    handlePreviewPdf()
+                    if (activeReportDoc) {
+                      handleOpenDocumentInPdfViewer(activeReportDoc)
+                    } else {
+                      handleOpenPreviewInPdfViewer()
+                    }
                   }}
                   className="w-full bg-purple-700 hover:bg-purple-800 text-white text-xs gap-1.5"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Baixar / Visualizar PDF Preparado</span>
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Visualizar / Baixar PDF Preparado</span>
                 </Button>
               </div>
             )}

@@ -3,9 +3,10 @@
  * Evita strings fixas desatualizadas espalhadas pelos componentes.
  */
 export const APP_CONFIG = {
-  version: '0.0.34',
-  versionLabel: 'v0.0.34',
-  stageName: 'Editor Flexível de Laudos (Texto Livre, Modelos Pessoais e Preferências Médicas)',
+  version: '0.0.35',
+  versionLabel: 'v0.0.35',
+  stageName:
+    'Visualizador Nativo de PDF (Canvas/PDF.js) e Fluxo Unificado de Conclusão e Assinatura',
   sessionDurationLabel: '12 horas (43.200s)',
   sessionDurationSecs: 43200,
   idleTimeoutLabel: '30 minutos',

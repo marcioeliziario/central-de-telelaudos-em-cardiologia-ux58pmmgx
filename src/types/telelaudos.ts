@@ -725,6 +725,8 @@ export interface SigningSessionActiveResponse {
   signatureReady?: boolean
   expiresAt?: string
   remainingSeconds?: number
+  encryptionAlgorithm?: string
+  keyVersion?: string
   certificate?: {
     cn: string
     issuer: string
@@ -754,6 +756,11 @@ export interface SigningSessionCallbackResponse {
   status: SigningSessionStatus
   signatureReady: boolean
   expiresAt: string
+  encryption?: {
+    algorithm: string
+    version: string
+    authenticated: boolean
+  }
   certificate: {
     cn: string
     issuer: string

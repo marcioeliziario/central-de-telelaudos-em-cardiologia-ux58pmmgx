@@ -117,6 +117,13 @@ export const multiProviderSigningService = {
   async revokeSession(sessionId?: string): Promise<{
     success: boolean
     revokedCount: number
+    revocationType?: string
+    providerDetails?: Array<{
+      provider: string
+      mechanism: string
+      providerEndpoint: string
+      note: string
+    }>
     message: string
   }> {
     return await pb.send('/backend/v1/signing/sessions/revoke', {
@@ -124,6 +131,26 @@ export const multiProviderSigningService = {
       body: {
         session_id: sessionId,
       },
+    })
+  },
+
+  /**
+   * Executa a bateria de validação criptográfica (AES-256-GCM) no backend (Etapa E1B)
+   */
+  async runCryptoTestSuite(): Promise<{
+    success: boolean
+    algorithm: string
+    keyVersion: string
+    allPassed: boolean
+    tests: Array<{
+      testId: string
+      name: string
+      status: 'PASSED' | 'FAILED'
+      details: string
+    }>
+  }> {
+    return await pb.send('/backend/v1/signing/crypto-test-suite', {
+      method: 'POST',
     })
   },
 

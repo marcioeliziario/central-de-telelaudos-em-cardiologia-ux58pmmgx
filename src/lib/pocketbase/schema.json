@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T00:18:56.124Z",
+  "generatedAt": "2026-10-16T00:33:05.955Z",
   "collections": [
     {
       "name": "users",
@@ -2916,6 +2916,24 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "encryption_algorithm",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "key_version",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "crypto_envelope_json",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

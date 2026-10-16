@@ -19,6 +19,7 @@ import {
   RefreshCw,
   XCircle,
   Clock,
+  ShieldCheck,
 } from 'lucide-react'
 import { multiProviderSigningService } from '@/services/multiProviderSigningService'
 import type {
@@ -207,6 +208,12 @@ export function MultiProviderSigningCard() {
                   {new Date(activeSession.expiresAt || '').toLocaleString('pt-BR')} (restam aprox.{' '}
                   {Math.round((activeSession.remainingSeconds || 0) / 60)} min)
                 </p>
+                <p className="flex items-center gap-1 text-[11px] text-teal-800">
+                  <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
+                  <strong>Criptografia em Repouso:</strong>{' '}
+                  {activeSession.encryptionAlgorithm || 'AES-256-GCM'} (Versão Chave:{' '}
+                  {activeSession.keyVersion || 'v1'})
+                </p>
               </div>
             </div>
 
@@ -324,7 +331,7 @@ export function MultiProviderSigningCard() {
             <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
             <span>
               Padrão PAdES ICP-Brasil (ISO 32000-1). Nenhum PIN/OTP armazenado no banco. Tokens
-              protegidos com HMAC/Keystream.
+              temporários protegidos com Criptografia Autenticada Padronizada AES-256-GCM.
             </span>
           </div>
 

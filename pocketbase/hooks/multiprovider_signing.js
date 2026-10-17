@@ -102,6 +102,13 @@ routerAdd('POST', '/backend/v1/signing/sessions/init', (e) => {
     throw new ForbiddenError('Acesso restrito a usuários autenticados.')
   }
 
+  const autoSignEnabled = ($os.getenv('AUTO_SIGNING_ENABLED') || '').toLowerCase() === 'true'
+  if (!autoSignEnabled) {
+    throw new BadRequestError(
+      'Sessões OAuth e provedores de assinatura automática desativados por decisão definitiva do MVP. Assinatura digital realizada individualmente pelo médico em ferramenta externa ICP-Brasil.',
+    )
+  }
+
   const getKey = (version) => {
     const reqVer = version || 'v1'
     let raw = ''
@@ -280,6 +287,11 @@ routerAdd('POST', '/backend/v1/signing/sessions/callback', (e) => {
   const authRecord = e.auth
   if (!authRecord) {
     throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const autoSignEnabled = ($os.getenv('AUTO_SIGNING_ENABLED') || '').toLowerCase() === 'true'
+  if (!autoSignEnabled) {
+    throw new BadRequestError('Sessões OAuth desativadas por decisão definitiva do MVP.')
   }
 
   const getKey = (version) => {
@@ -616,12 +628,19 @@ routerAdd('POST', '/backend/v1/signing/sessions/revoke', (e) => {
 })
 
 // -------------------------------------------------------------------------
-// 6. Assinatura Individual de Laudo via Adaptador Selecionado
+// 6. Assinatura Individual de Laudo via Adaptador Selecionado (BLOQUEADO NO MVP)
 // -------------------------------------------------------------------------
 routerAdd('POST', '/backend/v1/signing/sign-document', (e) => {
   const authRecord = e.auth
   if (!authRecord) {
     throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const autoSignEnabled = ($os.getenv('AUTO_SIGNING_ENABLED') || '').toLowerCase() === 'true'
+  if (!autoSignEnabled) {
+    throw new BadRequestError(
+      'Assinatura digital automática desativada nesta Central (Decisão Definitiva MVP). Utilize o fluxo de Assinatura Externa ICP-Brasil.',
+    )
   }
 
   const getKey = (version) => {

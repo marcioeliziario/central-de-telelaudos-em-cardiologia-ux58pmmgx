@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T15:44:43.822Z",
+  "generatedAt": "2026-10-17T22:04:48.853Z",
   "collections": [
     {
       "name": "users",
@@ -1495,7 +1495,8 @@
             "PROCESSANDO",
             "ASSINADA",
             "VALIDADA",
-            "FALHA"
+            "FALHA",
+            "REJEITADA"
           ]
         },
         {
@@ -1587,6 +1588,36 @@
         {
           "name": "is_simulated",
           "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pades_detected",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "signer_cpf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "signer_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "signer_crm",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "validation_pending_reasons",
+          "type": "text",
           "required": false,
           "system": false
         }

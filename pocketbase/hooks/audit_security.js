@@ -732,6 +732,7 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
   // E o perfil do médico estiver igualmente ativo (doctors.is_active = true).
   let docSignatureImage = null
   let signatureRecord = null
+  let hasHandwrittenSignature = false
   const isDoctorProfileActive = doctor ? doctor.getBool('is_active') : true
   if (isDoctorProfileActive) {
     try {
@@ -747,6 +748,7 @@ routerAdd('GET', '/backend/v1/exams/{id}/report-pdf-preview', (e) => {
         if (candidateSig.getBool('is_active')) {
           signatureRecord = candidateSig
           docSignatureImage = candidateSig.getString('image_data_uri')
+          hasHandwrittenSignature = true
         }
       }
     } catch (_) {}
@@ -1800,27 +1802,37 @@ routerAdd('POST', '/backend/v1/exams/{id}/prepare-signature', (e) => {
 
   // Buscar assinatura ativa do médico responsável
   // Regra de segurança: Se o médico estiver desativado no cadastro ou sua assinatura
-  // estiver desativada (is_active = false) ou limpa, NÃO estampar nenhuma assinatura gráfica.
+  // estiver ausente ou inativa (is_active = false), BLOQUEAR a conclusão do laudo informando o problema.
   let docSignatureImage = null
   let signatureRecord = null
   const isDocRecordActive = doctor ? doctor.getBool('is_active') : true
-  if (isDocRecordActive) {
-    try {
-      const sigs = $app.findRecordsByFilter(
-        'doctor_signatures',
-        `user_id = '${targetDocUserId}' && is_active = true`,
-        '-created',
-        1,
-        0,
-      )
-      if (sigs.length > 0) {
-        const candidateSig = sigs[0]
-        if (candidateSig.getBool('is_active')) {
-          signatureRecord = candidateSig
-          docSignatureImage = candidateSig.getString('image_data_uri')
-        }
+  if (!isDocRecordActive) {
+    throw new BadRequestError(
+      'Cadastro do médico cardiologista inativo no sistema. Não é possível concluir o laudo.',
+    )
+  }
+
+  try {
+    const sigs = $app.findRecordsByFilter(
+      'doctor_signatures',
+      `user_id = '${targetDocUserId}' && is_active = true`,
+      '-created',
+      1,
+      0,
+    )
+    if (sigs.length > 0) {
+      const candidateSig = sigs[0]
+      if (candidateSig.getBool('is_active')) {
+        signatureRecord = candidateSig
+        docSignatureImage = candidateSig.getString('image_data_uri')
       }
-    } catch (_) {}
+    }
+  } catch (_) {}
+
+  if (!signatureRecord || (!signatureRecord.getString('signature_image') && !docSignatureImage)) {
+    throw new BadRequestError(
+      'Assinatura manuscrita ausente ou inativa. Para concluir o laudo, o médico responsável deve cadastrar e ativar sua assinatura manuscrita na aba "Minha Assinatura".',
+    )
   }
 
   // Recuperar binário do storage privado ou da URI
@@ -2256,13 +2268,20 @@ routerAdd('GET', '/backend/v1/signatures/providers', (e) => {
   })
 })
 
-// 10. Iniciar Solicitação de Assinatura Digital (Adapter Abstrato com Proteção Anti-Replay)
+// 10. Iniciar Solicitação de Assinatura Digital Automática (BLOQUEADO EFETIVAMENTE NO MVP)
+// Decisão definitiva: Toda assinatura digital será feita externamente pelo médico individualmente.
 routerAdd('POST', '/backend/v1/signatures/request', (e) => {
   const authRecord = e.auth
   if (!authRecord) {
     throw new ForbiddenError('Acesso restrito a usuários autenticados.')
   }
 
+  const autoSignEnabled = ($os.getenv('AUTO_SIGNING_ENABLED') || '').toLowerCase() === 'true'
+  if (!autoSignEnabled) {
+    throw new BadRequestError(
+      'Assinatura digital automática desativada nesta Central (Decisão Definitiva MVP). Toda assinatura deve ser efetuada pelo médico individualmente em ferramenta externa ICP-Brasil e importada no laudo.',
+    )
+  }
   const userOrgs = $app.findRecordsByFilter(
     'user_organizations',
     `user_id = '${authRecord.id}' && is_active = true`,
@@ -2665,12 +2684,18 @@ routerAdd('POST', '/backend/v1/signatures/callback', (e) => {
   })
 })
 
-// 12.1. Conector Bird ID Pro - Upload de PDF para Assinatura (Simulado ou Real)
+// 12.1. Conector Bird ID Pro - Upload de PDF para Assinatura (BLOQUEADO NO MVP)
 routerAdd('POST', '/backend/v1/signatures/birdid/upload-pdf', (e) => {
   if (!e.auth) {
     throw new ForbiddenError('Acesso restrito a usuários autenticados.')
   }
 
+  const autoSignEnabled = ($os.getenv('AUTO_SIGNING_ENABLED') || '').toLowerCase() === 'true'
+  if (!autoSignEnabled) {
+    throw new BadRequestError(
+      'Upload automático para Bird ID Pro desativado (Decisão Definitiva MVP). Utilize o fluxo de Assinatura Externa ICP-Brasil.',
+    )
+  }
   let uploadBody = {}
   try {
     uploadBody = e.requestInfo().body || {}
@@ -3404,10 +3429,17 @@ routerAdd('POST', '/backend/v1/signatures/birdid/generate-test-pdf', (e) => {
   })
 })
 
-// 12.3. Endpoint de Teste e Homologação Local Bird ID Pro (Permite simular eventos da Soluti)
+// 12.3. Endpoint de Teste e Homologação Local Bird ID Pro (BLOQUEADO NO MVP)
 routerAdd('POST', '/backend/v1/signatures/birdid/mock-event', (e) => {
   if (!e.auth) {
     throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+
+  const autoSignEnabled = ($os.getenv('AUTO_SIGNING_ENABLED') || '').toLowerCase() === 'true'
+  if (!autoSignEnabled) {
+    throw new BadRequestError(
+      'Simulações e mocks de provedores automáticos desativados por decisão definitiva do MVP.',
+    )
   }
 
   const cardioOrAdminCheck = $app.findRecordsByFilter(

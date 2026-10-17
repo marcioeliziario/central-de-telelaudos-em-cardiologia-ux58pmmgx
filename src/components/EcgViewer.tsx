@@ -4,6 +4,8 @@ import { ExamRequest } from '@/types/telelaudos'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import * as pdfjsLib from 'pdfjs-dist'
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import {
   ZoomIn,
   ZoomOut,
@@ -22,7 +24,15 @@ import {
   Sun,
   Contrast,
   Compass,
+  Loader2,
+  AlertTriangle,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
+
+// Configura o worker do PDF.js bundled pelo Vite
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
 
 interface EcgViewerProps {
   exam: ExamRequest
@@ -91,11 +101,12 @@ export default function EcgViewer({
     exam.exam_file?.toLowerCase().includes('.pdf')
 
   // Gerar URL do arquivo original protegido com token de autenticação ativo do PocketBase
-  const fileUrl = exam.exam_file
-    ? pb.files.getURL(exam, exam.exam_file, {
-        token: pb.authStore.token || undefined,
-      })
-    : ''
+  const [fileUrl, setFileUrl] = useState<string>('')
+  const [fileBlobUrl, setFileBlobUrl] = useState<string>('')
+  const [pdfData, setPdfData] = useState<Uint8Array | null>(null)
+  const [isLoadingFile, setIsLoadingFile] = useState<boolean>(false)
+  const [fileLoadError, setFileLoadError] = useState<string | null>(null)
+  const [reloadTrigger, setReloadTrigger] = useState<number>(0)
 
   // Acesso seguro aos metadados de calibração opcionais não previstos na coleção estrita
   const examRecord = exam as unknown as Record<string, unknown>
@@ -103,6 +114,13 @@ export default function EcgViewer({
     typeof examRecord.calibration_speed === 'string' ? examRecord.calibration_speed : undefined
   const calibrationGain =
     typeof examRecord.calibration_gain === 'string' ? examRecord.calibration_gain : undefined
+
+  // Estado para suporte a PDF multipáginas
+  const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const [numPages, setNumPages] = useState<number>(0)
+  const [isRenderingPdfPage, setIsRenderingPdfPage] = useState<boolean>(false)
+  const pdfCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
   // Resetar estado quando o exame muda
   useEffect(() => {
@@ -115,7 +133,221 @@ export default function EcgViewer({
     setInverted(false)
     setRenderingMode('auto')
     setShowFiltersPanel(false)
+    setCurrentPage(1)
+    setNumPages(0)
   }, [exam.id])
+
+  // Carregamento resiliente do arquivo de exame (File Token + fetch com Authorization + fallback URL + PDF.js Uint8Array)
+  useEffect(() => {
+    let isCancelled = false
+    let currentBlobUrlToRevoke = ''
+
+    if (!exam.exam_file) {
+      setFileUrl('')
+      setFileBlobUrl('')
+      setPdfData(null)
+      setIsLoadingFile(false)
+      setFileLoadError(null)
+      return
+    }
+
+    setIsLoadingFile(true)
+    setFileLoadError(null)
+    setPdfData(null)
+
+    const loadExamFile = async () => {
+      try {
+        // 1. Obter File Token temporário oficial para campos com protected: true
+        let fileToken = ''
+        try {
+          fileToken = await pb.files.getToken()
+        } catch (tokenErr) {
+          console.warn(
+            'pb.files.getToken() falhou ou não suportado, tentando sem file token:',
+            tokenErr,
+          )
+        }
+
+        // 2. Construir URL com token
+        const generatedUrl = pb.files.getURL(exam, exam.exam_file, {
+          token: fileToken || undefined,
+        })
+        if (!isCancelled) {
+          setFileUrl(generatedUrl)
+        }
+
+        // 3. Buscar os bytes do arquivo via fetch com token de sessão ativo (Authorization)
+        // Isso resolve quaisquer restrições de headers/CORS e previne erros silenciosos na tag <img>
+        const headers: Record<string, string> = {}
+        if (pb.authStore.token) {
+          headers['Authorization'] = pb.authStore.token
+        }
+
+        let blob: Blob | null = null
+        try {
+          const resp = await fetch(generatedUrl, { headers })
+          if (resp.ok) {
+            blob = await resp.blob()
+          } else {
+            // Tentar URL sem query token se falhou
+            const directUrl = pb.files.getURL(exam, exam.exam_file)
+            const fallbackResp = await fetch(directUrl, { headers })
+            if (fallbackResp.ok) {
+              blob = await fallbackResp.blob()
+            } else {
+              throw new Error(
+                `Falha HTTP ao carregar arquivo de ECG: ${resp.status} ${resp.statusText}`,
+              )
+            }
+          }
+        } catch (fetchErr: any) {
+          console.warn(
+            'Fetch direto do arquivo falhou, mantendo URL direta como fallback:',
+            fetchErr,
+          )
+          // Se o fetch falhou (ex: modo offline ou restrição), ainda temos a generatedUrl
+          if (!generatedUrl) {
+            throw fetchErr
+          }
+        }
+
+        if (isCancelled) return
+
+        if (blob) {
+          const bUrl = URL.createObjectURL(blob)
+          currentBlobUrlToRevoke = bUrl
+          setFileBlobUrl(bUrl)
+
+          if (isPdf) {
+            const arrayBuffer = await blob.arrayBuffer()
+            if (!isCancelled) {
+              setPdfData(new Uint8Array(arrayBuffer))
+            }
+          }
+        }
+      } catch (err: any) {
+        if (!isCancelled) {
+          console.error('Erro ao carregar arquivo do exame de ECG:', err)
+          setFileLoadError(
+            err.message || 'Falha ao autenticar e descarregar o arquivo de ECG do servidor.',
+          )
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingFile(false)
+        }
+      }
+    }
+
+    loadExamFile()
+
+    return () => {
+      isCancelled = true
+      if (currentBlobUrlToRevoke) {
+        URL.revokeObjectURL(currentBlobUrlToRevoke)
+      }
+    }
+  }, [exam.id, exam.exam_file, reloadTrigger, isPdf])
+
+  // Inicializar e carregar documento PDF.js
+  useEffect(() => {
+    if (!isPdf || (!pdfData && !fileUrl)) {
+      setPdfDoc(null)
+      setNumPages(0)
+      return
+    }
+
+    let isCancelled = false
+
+    const loadPdfDoc = async () => {
+      try {
+        let loadingTask: pdfjsLib.PDFDocumentLoadingTask
+        if (pdfData && pdfData.length > 0) {
+          const copy = new Uint8Array(pdfData)
+          loadingTask = pdfjsLib.getDocument({
+            data: copy,
+            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+            cMapPacked: true,
+          })
+        } else if (fileBlobUrl) {
+          loadingTask = pdfjsLib.getDocument({
+            url: fileBlobUrl,
+            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+            cMapPacked: true,
+          })
+        } else {
+          loadingTask = pdfjsLib.getDocument({
+            url: fileUrl,
+            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+            cMapPacked: true,
+          })
+        }
+
+        const loadedDoc = await loadingTask.promise
+        if (isCancelled) return
+        setPdfDoc(loadedDoc)
+        setNumPages(loadedDoc.numPages)
+        setCurrentPage(1)
+      } catch (pdfErr: any) {
+        if (!isCancelled) {
+          console.error('Erro ao processar PDF via PDF.js:', pdfErr)
+          setFileLoadError(`Erro ao interpretar traçado em PDF: ${pdfErr.message}`)
+        }
+      }
+    }
+
+    loadPdfDoc()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [isPdf, pdfData, fileBlobUrl, fileUrl])
+
+  // Renderizar página do PDF em canvas nativo
+  const renderPdfPage = useCallback(
+    async (pageNum: number) => {
+      if (!pdfDoc || !pdfCanvasRef.current) return
+
+      try {
+        setIsRenderingPdfPage(true)
+        const page = await pdfDoc.getPage(pageNum)
+        const canvas = pdfCanvasRef.current
+        const context = canvas.getContext('2d')
+        if (!context) return
+
+        // Escala base de visualização (1.5x)
+        const viewport = page.getViewport({ scale: 1.5 })
+
+        // Suporte a telas de alta densidade (HiDPI / Retina)
+        const outputScale = window.devicePixelRatio || 1
+        canvas.width = Math.floor(viewport.width * outputScale)
+        canvas.height = Math.floor(viewport.height * outputScale)
+        canvas.style.width = `${Math.floor(viewport.width)}px`
+        canvas.style.height = `${Math.floor(viewport.height)}px`
+
+        const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined
+
+        const renderContext = {
+          canvasContext: context,
+          viewport,
+          transform,
+        }
+
+        await page.render(renderContext).promise
+      } catch (err: any) {
+        console.error('Falha ao renderizar página do PDF:', err)
+      } finally {
+        setIsRenderingPdfPage(false)
+      }
+    },
+    [pdfDoc],
+  )
+
+  useEffect(() => {
+    if (pdfDoc && currentPage > 0) {
+      renderPdfPage(currentPage)
+    }
+  }, [pdfDoc, currentPage, renderPdfPage])
 
   // Escuta mudanças de tela cheia do navegador
   useEffect(() => {
@@ -184,7 +416,6 @@ export default function EcgViewer({
 
   // Roda do mouse com zoom centrado no cursor (suporta Ctrl+Wheel ou Wheel direto na área da imagem)
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (isPdf) return
     e.preventDefault()
     const zoomDelta = e.deltaY < 0 ? 0.2 : -0.2
     applyZoom(zoom + zoomDelta, { clientX: e.clientX, clientY: e.clientY })
@@ -192,7 +423,7 @@ export default function EcgViewer({
 
   // Pan por arraste com contenção (clamp)
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (isPdf || e.button !== 0 || isMagnifierActive || activeDraggingGuideId) return
+    if (e.button !== 0 || isMagnifierActive || activeDraggingGuideId) return
     setIsDragging(true)
     dragStartRef.current = {
       mouseX: e.clientX,
@@ -234,19 +465,21 @@ export default function EcgViewer({
       setPan(clampPan(newPanX, newPanY, zoom))
     }
 
-    // 3. Atualização da Lupa Nativa 3,5x
-    if (isMagnifierActive && imageRef.current && containerRef.current) {
-      const img = imageRef.current
-      const imgRect = img.getBoundingClientRect()
-      const x = e.clientX - imgRect.left
-      const y = e.clientY - imgRect.top
+    // 3. Atualização da Lupa Nativa 3,5x (suporta Imagem ou Canvas de PDF)
+    if (isMagnifierActive && containerRef.current) {
+      const targetElement = isPdf ? pdfCanvasRef.current : imageRef.current
+      if (targetElement) {
+        const elemRect = targetElement.getBoundingClientRect()
+        const x = e.clientX - elemRect.left
+        const y = e.clientY - elemRect.top
 
-      if (x >= 0 && x <= imgRect.width && y >= 0 && y <= imgRect.height) {
-        setMagnifierPos({ x: e.clientX, y: e.clientY })
-        setMouseInsideImage(true)
-        updateMagnifierCanvas(x, y, imgRect.width, imgRect.height)
-      } else {
-        setMouseInsideImage(false)
+        if (x >= 0 && x <= elemRect.width && y >= 0 && y <= elemRect.height) {
+          setMagnifierPos({ x: e.clientX, y: e.clientY })
+          setMouseInsideImage(true)
+          updateMagnifierCanvas(x, y, elemRect.width, elemRect.height)
+        } else {
+          setMouseInsideImage(false)
+        }
       }
     }
   }
@@ -256,27 +489,43 @@ export default function EcgViewer({
     setActiveDraggingGuideId(null)
   }
 
-  // Renderização da Lupa 3,5x amostrando pixels NATIVOS da imagem
+  // Renderização da Lupa 3,5x amostrando pixels NATIVOS da imagem ou do canvas PDF
   const updateMagnifierCanvas = (
-    cursorXOnImg: number,
-    cursorYOnImg: number,
+    cursorXOnTarget: number,
+    cursorYOnTarget: number,
     displayedW: number,
     displayedH: number,
   ) => {
     const canvas = magnifierCanvasRef.current
-    const img = imageRef.current
-    if (!canvas || !img || !img.naturalWidth || !img.naturalHeight) return
+    if (!canvas) return
+
+    const sourceElement: CanvasImageSource | null = isPdf ? pdfCanvasRef.current : imageRef.current
+
+    if (!sourceElement) return
+
+    let naturalW = 0
+    let naturalH = 0
+
+    if (isPdf && pdfCanvasRef.current) {
+      naturalW = pdfCanvasRef.current.width
+      naturalH = pdfCanvasRef.current.height
+    } else if (imageRef.current) {
+      naturalW = imageRef.current.naturalWidth
+      naturalH = imageRef.current.naturalHeight
+    }
+
+    if (!naturalW || !naturalH) return
 
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    // Proporção real da imagem nativa
-    const scaleNativeX = img.naturalWidth / displayedW
-    const scaleNativeY = img.naturalHeight / displayedH
+    // Proporção real da fonte nativa
+    const scaleNativeX = naturalW / displayedW
+    const scaleNativeY = naturalH / displayedH
 
-    // Ponto central em pixels originais da imagem HD
-    const nativeCenterX = cursorXOnImg * scaleNativeX
-    const nativeCenterY = cursorYOnImg * scaleNativeY
+    // Ponto central em pixels originais da fonte HD
+    const nativeCenterX = cursorXOnTarget * scaleNativeX
+    const nativeCenterY = cursorYOnTarget * scaleNativeY
 
     const canvasSize = 180
     canvas.width = canvasSize
@@ -303,9 +552,9 @@ export default function EcgViewer({
     ctx.clearRect(0, 0, canvasSize, canvasSize)
 
     try {
-      ctx.drawImage(img, sourceX, sourceY, sourceW, sourceH, 0, 0, canvasSize, canvasSize)
+      ctx.drawImage(sourceElement, sourceX, sourceY, sourceW, sourceH, 0, 0, canvasSize, canvasSize)
     } catch (_) {
-      // Caso a imagem ainda esteja carregando
+      // Caso a fonte ainda esteja carregando
     }
 
     // Desenhar retículo central fino (mira médica)
@@ -356,12 +605,13 @@ export default function EcgViewer({
     }
   }
 
-  // Download do arquivo original sem recompressão via URL autenticada do PocketBase
+  // Download do arquivo original sem recompressão via URL autenticada do PocketBase / Blob
   const handleDownloadOriginal = () => {
-    if (!fileUrl) return
+    const downloadTarget = fileBlobUrl || fileUrl
+    if (!downloadTarget) return
     const a = document.createElement('a')
-    a.href = fileUrl
-    a.download = exam.exam_file || 'ecg_original'
+    a.href = downloadTarget
+    a.download = exam.exam_file || (isPdf ? 'ecg_original.pdf' : 'ecg_original.png')
     a.target = '_blank'
     document.body.appendChild(a)
     a.click()
@@ -397,6 +647,35 @@ export default function EcgViewer({
 
         {/* Controles Ergonômicos */}
         <div className="flex flex-wrap items-center gap-1">
+          {/* Paginação para PDFs com mais de 1 página */}
+          {isPdf && numPages > 1 && (
+            <div className="flex items-center bg-white rounded-md border border-[#E3E6E8] px-1 py-0.5 shadow-2xs mr-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1 || isRenderingPdfPage}
+                title="Página anterior"
+                className="h-6 w-6 p-0 text-[#6F7780] hover:text-[#2F3942]"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </Button>
+              <span className="text-[11px] font-mono text-[#2F3942] font-semibold px-1.5 select-none">
+                {currentPage} / {numPages}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
+                disabled={currentPage >= numPages || isRenderingPdfPage}
+                title="Próxima página"
+                className="h-6 w-6 p-0 text-[#6F7780] hover:text-[#2F3942]"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </Button>
+            </div>
+          )}
+
           {/* Zoom Controles (50% - 600%) */}
           <div className="flex items-center bg-white rounded-md border border-[#E3E6E8] px-1 py-0.5 shadow-2xs">
             <Button
@@ -496,8 +775,8 @@ export default function EcgViewer({
             <span className="hidden sm:inline">Guias</span>
           </Button>
 
-          {/* Download Original com Token */}
-          {fileUrl && (
+          {/* Download Original com Token / Blob */}
+          {(fileBlobUrl || fileUrl) && (
             <Button
               size="sm"
               variant="ghost"
@@ -540,7 +819,7 @@ export default function EcgViewer({
       </div>
 
       {/* Painel Expansível de Filtros de Imagem e Nitidez */}
-      {showFiltersPanel && !isPdf && (
+      {showFiltersPanel && (
         <div className="bg-[#F7F6F4] border-b border-[#E3E6E8] px-4 py-2.5 text-xs grid grid-cols-1 sm:grid-cols-4 gap-3 items-center">
           {/* Brilho */}
           <div className="flex items-center gap-2">
@@ -647,7 +926,7 @@ export default function EcgViewer({
       )}
 
       {/* Banner de Aviso das Guias Visuais */}
-      {showGuides && !isPdf && (
+      {showGuides && (
         <div className="bg-amber-50/80 border-b border-amber-200/80 px-4 py-1.5 text-[11px] text-amber-900 flex items-center justify-between">
           <div className="flex items-center gap-1.5">
             <Compass className="w-3.5 h-3.5 text-amber-700" />
@@ -709,27 +988,69 @@ export default function EcgViewer({
           isDragging ? 'cursor-grabbing' : isMagnifierActive ? 'cursor-crosshair' : 'cursor-grab'
         }`}
       >
-        {isPdf ? (
-          <div className="w-full h-full flex flex-col items-center justify-center">
-            {fileUrl ? (
-              <iframe
-                src={`${fileUrl}#toolbar=1&navpanes=1`}
-                className="w-full h-full min-h-[500px] rounded-lg border border-[#E3E6E8] bg-white shadow-xs"
-                title="Visualizador de PDF do ECG"
-              />
-            ) : (
-              <div className="text-center p-6 text-[#6F7780]">
-                <FileText className="w-12 h-12 mx-auto text-[#6F7780]/40 mb-2" />
-                <p className="font-semibold text-xs text-[#2F3942]">
-                  Arquivo PDF anexado à solicitação.
-                </p>
-                <p className="text-[11px] text-[#6F7780] mt-1">
-                  Abra o arquivo diretamente pelo link seguro do sistema.
-                </p>
-              </div>
-            )}
+        {/* Estado 1: Carregando Arquivo Protegido */}
+        {isLoadingFile && (
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-2xs flex flex-col items-center justify-center gap-2 z-30">
+            <Loader2 className="w-8 h-8 animate-spin text-[#4A90D9]" />
+            <p className="text-xs text-[#2F3942] font-semibold">
+              Obtendo arquivo protegido de ECG...
+            </p>
+            <span className="text-[10px] text-[#6F7780] font-mono">
+              Autenticação de token de arquivo em processamento
+            </span>
           </div>
-        ) : (
+        )}
+
+        {/* Estado 2: Erro no Carregamento com Botão Tentar Novamente */}
+        {!isLoadingFile && fileLoadError && (
+          <div className="p-6 bg-white rounded-xl border border-red-200 text-center max-w-md shadow-sm space-y-3 z-20">
+            <AlertTriangle className="w-8 h-8 text-red-600 mx-auto" />
+            <div>
+              <h4 className="text-sm font-bold text-red-950">Falha ao Carregar Traçado de ECG</h4>
+              <p className="text-xs text-red-800 mt-1">{fileLoadError}</p>
+            </div>
+            <div className="flex items-center justify-center gap-2 pt-1">
+              <Button
+                size="sm"
+                onClick={() => setReloadTrigger((prev) => prev + 1)}
+                className="text-xs bg-[#4A90D9] hover:bg-[#3b7dc2] text-white gap-1.5 font-semibold"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Tentar novamente</span>
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Estado 3: Sem arquivo anexado */}
+        {!isLoadingFile && !fileLoadError && !exam.exam_file && (
+          <div className="w-[560px] h-[380px] bg-white border border-[#E3E6E8] rounded-lg flex flex-col items-center justify-center p-6 text-center shadow-xs">
+            <div
+              className="w-full h-full rounded flex items-center justify-center relative overflow-hidden"
+              style={{
+                backgroundColor: '#fffdf8',
+                backgroundImage:
+                  'linear-gradient(to right, rgba(240,155,125,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(240,155,125,0.18) 1px, transparent 1px)',
+                backgroundSize: '20px 20px',
+              }}
+            >
+              <div className="text-center p-4 bg-white/95 rounded-lg border border-[#E3E6E8] text-[#2F3942] shadow-xs max-w-sm">
+                <Info className="w-5 h-5 text-amber-600 mx-auto mb-1.5" />
+                <div className="font-bold text-xs text-[#2F3942]">Arquivo de ECG Não Anexado</div>
+                <div className="text-[11px] text-[#6F7780] mt-1">
+                  Nenhum arquivo de imagem ou PDF foi anexado a esta solicitação cadastrada.
+                </div>
+                <div className="text-[10px] text-[#6F7780] mt-2 bg-[#F7F6F4] p-2 rounded border border-[#E3E6E8]">
+                  Para emitir o laudo com segurança diagnóstica, devolva o exame à clínica
+                  solicitante solicitando o reenvio do traçado legível.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Estado 4: Visualização com Pan/Zoom de PDF (Canvas Direto) ou Imagem (PNG/JPEG) */}
+        {!isLoadingFile && !fileLoadError && exam.exam_file && (
           <div
             className="relative inline-block transition-transform duration-75 ease-out"
             style={{
@@ -737,11 +1058,32 @@ export default function EcgViewer({
               transformOrigin: 'center center',
             }}
           >
-            {/* Traçado de Imagem (PNG/JPG) com aspect-ratio/object-fit: contain preservados */}
-            {fileUrl ? (
+            {isPdf ? (
+              /* Traçado direto em PDF renderizado sobre Canvas com PDF.js */
+              <div className="relative shadow-sm rounded-lg overflow-hidden bg-white border border-[#E3E6E8]">
+                {isRenderingPdfPage && (
+                  <div className="absolute top-2 right-2 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded flex items-center gap-1 z-10">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Renderizando página...</span>
+                  </div>
+                )}
+                <canvas
+                  ref={pdfCanvasRef}
+                  style={{
+                    filter: cssFilter,
+                    imageRendering: renderingMode,
+                    maxHeight: 'calc(100vh - 220px)',
+                    maxWidth: '100%',
+                    display: 'block',
+                  }}
+                  className="pointer-events-none select-none bg-white"
+                />
+              </div>
+            ) : (
+              /* Traçado de Imagem (PNG/JPG) com aspect-ratio e contenção */
               <img
                 ref={imageRef}
-                src={fileUrl}
+                src={fileBlobUrl || fileUrl}
                 alt="Traçado de ECG do Paciente"
                 crossOrigin="anonymous"
                 style={{
@@ -752,46 +1094,12 @@ export default function EcgViewer({
                 }}
                 className="object-contain rounded-lg border border-[#E3E6E8] shadow-sm bg-white pointer-events-none select-none"
               />
-            ) : (
-              <div className="w-[560px] h-[380px] bg-white border border-[#E3E6E8] rounded-lg flex flex-col items-center justify-center p-6 text-center shadow-xs">
-                {/* Grade milimetrada de fallback estético */}
-                <div
-                  className="w-full h-full rounded flex items-center justify-center relative overflow-hidden"
-                  style={{
-                    backgroundColor: '#fffdf8',
-                    backgroundImage:
-                      'linear-gradient(to right, rgba(240,155,125,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(240,155,125,0.18) 1px, transparent 1px)',
-                    backgroundSize: '20px 20px',
-                  }}
-                >
-                  <div className="text-center p-4 bg-white/95 rounded-lg border border-[#E3E6E8] text-[#2F3942] shadow-xs max-w-sm">
-                    <Info className="w-5 h-5 text-amber-600 mx-auto mb-1.5" />
-                    <div className="font-bold text-xs text-[#2F3942]">
-                      Arquivo de ECG Não Anexado
-                    </div>
-                    <div className="text-[11px] text-[#6F7780] mt-1">
-                      {exam.exam_file ? (
-                        <>Arquivo referenciado ({exam.exam_file}) não localizado no servidor.</>
-                      ) : (
-                        <>
-                          Nenhum arquivo de imagem ou PDF foi anexado a esta solicitação cadastrada.
-                        </>
-                      )}
-                    </div>
-                    <div className="text-[10px] text-[#6F7780] mt-2 bg-[#F7F6F4] p-2 rounded border border-[#E3E6E8]">
-                      Para emitir o laudo com segurança diagnóstica, devolva o exame à clínica
-                      solicitante solicitando o reenvio do traçado legível.
-                    </div>
-                  </div>
-                </div>
-              </div>
             )}
           </div>
         )}
 
         {/* Guias Visuais Arrastáveis (Sobrepostas na Área de Visualização) */}
         {showGuides &&
-          !isPdf &&
           guides.map((guide) => (
             <div
               key={guide.id}
@@ -828,7 +1136,7 @@ export default function EcgViewer({
           ))}
 
         {/* Lente da Lupa Nativa 3,5x (Canvas em Amostragem de Pixels Nativa) */}
-        {isMagnifierActive && mouseInsideImage && fileUrl && !isPdf && (
+        {isMagnifierActive && mouseInsideImage && (fileBlobUrl || fileUrl) && (
           <div
             className="pointer-events-none fixed w-[184px] h-[184px] rounded-full border-2 border-[#4A90D9] shadow-2xl overflow-hidden bg-white z-50 flex items-center justify-center"
             style={{

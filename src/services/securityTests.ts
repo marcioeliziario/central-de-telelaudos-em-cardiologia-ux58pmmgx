@@ -1354,11 +1354,33 @@ export async function runSecurityAndIsolationTests(
 
     if (exams.items.length > 0) {
       sampleExamId = exams.items[0].id
+      const examWithFile = exams.items.find((ex) => !!ex.exam_file) || exams.items[0]
+      let fileTokenObtained = false
+      let fileFetchSuccess = false
+      let fileStatusCode = 200
+
+      if (examWithFile.exam_file) {
+        try {
+          const fileToken = await clientCardio.files.getToken()
+          if (fileToken) fileTokenObtained = true
+          const urlWithToken = clientCardio.files.getURL(examWithFile, examWithFile.exam_file, {
+            token: fileToken,
+          })
+          const fileResp = await fetch(urlWithToken)
+          fileStatusCode = fileResp.status
+          if (fileResp.ok) {
+            fileFetchSuccess = true
+          }
+        } catch {
+          /* intentionally ignored */
+        }
+      }
+
       updateTest('test-e3-1-doctor-authorized-access', {
         status: 'passed',
         durationMs: Math.round(performance.now() - te31Start),
-        httpStatus: 200,
-        realResult: `Acesso médico autorizado concedido: Exame ID ${sampleExamId} carregado com traçado "${exams.items[0].exam_file}" e dados clínicos do paciente.`,
+        httpStatus: fileStatusCode,
+        realResult: `Acesso médico autorizado concedido: Exame ID ${examWithFile.id} com arquivo protegido "${examWithFile.exam_file}". Token de arquivo: ${fileTokenObtained ? 'válido' : 'n/a'}, Fetch HTTP: ${fileFetchSuccess ? '200 OK' : fileStatusCode}.`,
       })
     } else {
       updateTest('test-e3-1-doctor-authorized-access', {

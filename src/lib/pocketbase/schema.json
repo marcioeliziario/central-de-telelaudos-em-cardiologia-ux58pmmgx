@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-17T22:04:48.853Z",
+  "generatedAt": "2026-10-17T22:15:14.577Z",
   "collections": [
     {
       "name": "users",
@@ -1617,6 +1617,49 @@
         },
         {
           "name": "validation_pending_reasons",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "validation_type",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["MANUAL_CONFERENCE", "AUTOMATIC_CRYPTO"]
+        },
+        {
+          "name": "manual_conference_responsible_name",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "manual_conference_responsible_crm",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "manual_conference_timestamp",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "manual_conference_report_ref",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "manual_conference_declaration",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "manual_conference_notes",
           "type": "text",
           "required": false,
           "system": false

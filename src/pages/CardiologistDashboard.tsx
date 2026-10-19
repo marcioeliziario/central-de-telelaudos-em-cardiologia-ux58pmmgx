@@ -778,293 +778,293 @@ export function CardiologistDashboard() {
                         <th className="py-2.5 px-3 text-right">Ação Principal</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[#E3E6E8]">
-                      {filteredExams.map((exam) => {
-                        const isAssignedToMe = exam.assigned_doctor_id === doctor?.id
-                        const isAssignedToOther =
-                          exam.assigned_doctor_id && exam.assigned_doctor_id !== doctor?.id
-                        const isExpanded = Boolean(expandedExamIds[exam.id])
+                    {filteredExams.map((exam) => {
+                      const isAssignedToMe = exam.assigned_doctor_id === doctor?.id
+                      const isAssignedToOther =
+                        exam.assigned_doctor_id && exam.assigned_doctor_id !== doctor?.id
+                      const isExpanded = Boolean(expandedExamIds[exam.id])
 
-                        // Cálculo visual do prazo restante / SLA
-                        const getRemainingDeadline = () => {
-                          if (!exam.deadline_at)
-                            return <span className="text-[#6F7780]">Sem prazo</span>
-                          const deadline = new Date(exam.deadline_at)
-                          const now = new Date()
-                          const diffMs = deadline.getTime() - now.getTime()
-                          const diffHours = Math.round(diffMs / (1000 * 60 * 60))
+                      // Cálculo visual do prazo restante / SLA
+                      const getRemainingDeadline = () => {
+                        if (!exam.deadline_at)
+                          return <span className="text-[#6F7780]">Sem prazo</span>
+                        const deadline = new Date(exam.deadline_at)
+                        const now = new Date()
+                        const diffMs = deadline.getTime() - now.getTime()
+                        const diffHours = Math.round(diffMs / (1000 * 60 * 60))
 
-                          if (exam.sla_status === 'atrasado' || diffMs < 0) {
-                            return (
-                              <span className="inline-flex items-center gap-1 font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200">
-                                <AlertTriangle className="w-3 h-3 text-red-600 shrink-0" />
-                                <span>Atrasado ({Math.abs(diffHours)}h)</span>
-                              </span>
-                            )
-                          }
-                          if (exam.sla_status === 'proximo_do_vencimento' || diffHours <= 2) {
-                            return (
-                              <span className="inline-flex items-center gap-1 font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                                <Clock className="w-3 h-3 text-amber-600 shrink-0" />
-                                <span>Vence em ~{Math.max(1, diffHours)}h</span>
-                              </span>
-                            )
-                          }
+                        if (exam.sla_status === 'atrasado' || diffMs < 0) {
                           return (
-                            <span className="text-[#2F3942] font-mono text-[11px]">
-                              ~{diffHours}h restantes
+                            <span className="inline-flex items-center gap-1 font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200">
+                              <AlertTriangle className="w-3 h-3 text-red-600 shrink-0" />
+                              <span>Atrasado ({Math.abs(diffHours)}h)</span>
                             </span>
                           )
                         }
-
+                        if (exam.sla_status === 'proximo_do_vencimento' || diffHours <= 2) {
+                          return (
+                            <span className="inline-flex items-center gap-1 font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                              <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                              <span>Vence em ~{Math.max(1, diffHours)}h</span>
+                            </span>
+                          )
+                        }
                         return (
-                          <React.Fragment key={exam.id}>
-                            <tr
-                              className={`hover:bg-[#F7F6F4]/80 transition-colors ${
-                                isExpanded ? 'bg-[#F7F6F4]/50' : ''
-                              } ${exam.urgency === 'emergency' ? 'bg-red-50/20' : ''}`}
-                            >
-                              {/* Botão de Expansão */}
-                              <td className="py-2.5 px-2 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleExpandExam(exam.id)}
-                                  className="p-1 rounded hover:bg-[#E3E6E8]/60 text-[#6F7780] hover:text-[#2F3942]"
-                                  title={isExpanded ? 'Recolher detalhes' : 'Expandir detalhes'}
-                                >
-                                  {isExpanded ? (
-                                    <ChevronUp className="w-3.5 h-3.5 text-[#4A90D9]" />
-                                  ) : (
-                                    <ChevronDown className="w-3.5 h-3.5" />
-                                  )}
-                                </button>
-                              </td>
+                          <span className="text-[#2F3942] font-mono text-[11px]">
+                            ~{diffHours}h restantes
+                          </span>
+                        )
+                      }
 
-                              {/* Coluna 1: Paciente */}
-                              <td className="py-2.5 px-3 min-w-[180px]">
-                                <div className="font-bold text-[#2F3942] text-xs">
-                                  {exam.expand?.patient_id?.full_name || 'Paciente Fictício'}
-                                </div>
-                                <div className="text-[11px] text-[#6F7780] flex items-center gap-1.5">
-                                  <span>
-                                    Exame:{' '}
-                                    {exam.exam_date
-                                      ? new Date(exam.exam_date).toLocaleDateString('pt-BR')
-                                      : '—'}
-                                  </span>
-                                  {exam.has_pacemaker && (
-                                    <Badge className="bg-amber-100 text-amber-900 border-amber-200 text-[9px] px-1 py-0">
-                                      MP
-                                    </Badge>
-                                  )}
-                                </div>
-                              </td>
-
-                              {/* Coluna 2: Clínica */}
-                              <td
-                                className="py-2.5 px-3 text-[#2F3942] min-w-[140px] truncate max-w-[200px]"
-                                title={
-                                  exam.expand?.organization_id?.trade_name ||
-                                  exam.expand?.organization_id?.name
-                                }
+                      return (
+                        <tbody
+                          key={exam.id}
+                          className="divide-y divide-[#E3E6E8] border-b border-[#E3E6E8] last:border-b-0"
+                        >
+                          <tr
+                            className={`hover:bg-[#F7F6F4]/80 transition-colors ${
+                              isExpanded ? 'bg-[#F7F6F4]/50' : ''
+                            } ${exam.urgency === 'emergency' ? 'bg-red-50/20' : ''}`}
+                          >
+                            {/* Botão de Expansão */}
+                            <td className="py-2.5 px-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => toggleExpandExam(exam.id)}
+                                className="p-1 rounded hover:bg-[#E3E6E8]/60 text-[#6F7780] hover:text-[#2F3942]"
+                                title={isExpanded ? 'Recolher detalhes' : 'Expandir detalhes'}
                               >
-                                <span className="font-medium text-xs">
-                                  {exam.expand?.organization_id?.trade_name ||
-                                    exam.expand?.organization_id?.name ||
-                                    'Clínica'}
+                                {isExpanded ? (
+                                  <ChevronUp className="w-3.5 h-3.5 text-[#4A90D9]" />
+                                ) : (
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            </td>
+
+                            {/* Coluna 1: Paciente */}
+                            <td className="py-2.5 px-3 min-w-[180px]">
+                              <div className="font-bold text-[#2F3942] text-xs">
+                                {exam.expand?.patient_id?.full_name || 'Paciente Fictício'}
+                              </div>
+                              <div className="text-[11px] text-[#6F7780] flex items-center gap-1.5">
+                                <span>
+                                  Exame:{' '}
+                                  {exam.exam_date
+                                    ? new Date(exam.exam_date).toLocaleDateString('pt-BR')
+                                    : '—'}
                                 </span>
-                              </td>
+                                {exam.has_pacemaker && (
+                                  <Badge className="bg-amber-100 text-amber-900 border-amber-200 text-[9px] px-1 py-0">
+                                    MP
+                                  </Badge>
+                                )}
+                              </div>
+                            </td>
 
-                              {/* Coluna 3: Prioridade */}
-                              <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                                {getUrgencyBadge(exam.urgency)}
-                              </td>
+                            {/* Coluna 2: Clínica */}
+                            <td
+                              className="py-2.5 px-3 text-[#2F3942] min-w-[140px] truncate max-w-[200px]"
+                              title={
+                                exam.expand?.organization_id?.trade_name ||
+                                exam.expand?.organization_id?.name
+                              }
+                            >
+                              <span className="font-medium text-xs">
+                                {exam.expand?.organization_id?.trade_name ||
+                                  exam.expand?.organization_id?.name ||
+                                  'Clínica'}
+                              </span>
+                            </td>
 
-                              {/* Coluna 4: Situação */}
-                              <td className="py-2.5 px-3 text-center whitespace-nowrap">
-                                {getStatusBadge(exam.status)}
-                              </td>
+                            {/* Coluna 3: Prioridade */}
+                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                              {getUrgencyBadge(exam.urgency)}
+                            </td>
 
-                              {/* Coluna 5: Prazo restante */}
-                              <td className="py-2.5 px-3 whitespace-nowrap">
-                                {getRemainingDeadline()}
-                              </td>
+                            {/* Coluna 4: Situação */}
+                            <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                              {getStatusBadge(exam.status)}
+                            </td>
 
-                              {/* Coluna 6: Ação principal */}
-                              <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                                <div className="flex items-center justify-end gap-1.5">
-                                  {/* Botão de Ver Ficha Clínica */}
+                            {/* Coluna 5: Prazo restante */}
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              {getRemainingDeadline()}
+                            </td>
+
+                            {/* Coluna 6: Ação principal */}
+                            <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {/* Botão de Ver Ficha Clínica */}
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setViewingClinicalDataExam(exam)}
+                                  className="h-7 px-2 text-[11px] text-[#6F7780] hover:text-[#2F3942] hover:bg-[#E3E6E8]/50"
+                                  title="Ver Ficha Clínica"
+                                >
+                                  <FileText className="w-3 h-3 mr-1" />
+                                  <span className="hidden xl:inline">Ficha</span>
+                                </Button>
+
+                                {/* Ação Principal: Assumir / Continuar / Revisar / Assinar */}
+                                {exam.status === 'pending' && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleClaimExam(exam)}
+                                    disabled={isClaiming === exam.id}
+                                    className="h-7 text-xs bg-[#4A90D9] hover:bg-[#3b7dc2] text-white font-semibold px-2.5 shadow-xs"
+                                  >
+                                    {isClaiming === exam.id ? (
+                                      <>
+                                        <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                        <span>Assumindo...</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <UserCheck className="w-3 h-3 mr-1" />
+                                        <span>Assumir</span>
+                                      </>
+                                    )}
+                                  </Button>
+                                )}
+
+                                {exam.status === 'in_analysis' && isAssignedToMe && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => setActiveExam(exam)}
+                                    className="h-7 text-xs bg-[#2F3942] hover:bg-[#1f262c] text-white font-semibold px-2.5 shadow-xs"
+                                  >
+                                    <Activity className="w-3 h-3 mr-1 text-[#4A90D9]" />
+                                    <span>Continuar</span>
+                                  </Button>
+                                )}
+
+                                {exam.status === 'in_analysis' && isAssignedToOther && (
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] px-2 py-0.5"
+                                  >
+                                    Outro Médico
+                                  </Badge>
+                                )}
+
+                                {exam.status === 'waiting_signature' && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setActiveExam(exam)}
+                                      className="h-7 text-xs border-[#4A90D9]/40 text-[#4A90D9] hover:bg-[#4A90D9]/5 font-semibold px-2"
+                                    >
+                                      <CheckCircle className="w-3 h-3 mr-1" />
+                                      <span>Revisar</span>
+                                    </Button>
+
+                                    <Button
+                                      size="sm"
+                                      onClick={async () => {
+                                        setIsOpeningBirdIdModal(exam.id)
+                                        try {
+                                          const docs = await documentService.getDocumentsForExam(
+                                            exam.id,
+                                          )
+                                          if (docs && docs.length > 0) {
+                                            setBirdIdModalDoc(docs[0])
+                                            setBirdIdModalExam(exam)
+                                          } else {
+                                            alert(
+                                              'Nenhum documento preparado para assinatura encontrado neste exame. Abra o editor e prepare o PDF.',
+                                            )
+                                          }
+                                        } catch (err: any) {
+                                          alert(`Erro ao carregar documento: ${err.message}`)
+                                        } finally {
+                                          setIsOpeningBirdIdModal(null)
+                                        }
+                                      }}
+                                      disabled={isOpeningBirdIdModal === exam.id}
+                                      className="h-7 text-xs bg-[#4A90D9] hover:bg-[#3b7dc2] text-white font-semibold px-2.5 shadow-xs"
+                                      title="Assinar com Bird ID Pro"
+                                    >
+                                      {isOpeningBirdIdModal === exam.id ? (
+                                        <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                      ) : (
+                                        <PenTool className="w-3 h-3 mr-1" />
+                                      )}
+                                      <span>Assinar</span>
+                                    </Button>
+                                  </>
+                                )}
+
+                                {/* Ação de Devolver com Problema Técnico */}
+                                {exam.status !== 'returned' && exam.status !== 'reported' && (
                                   <Button
                                     size="sm"
                                     variant="ghost"
-                                    onClick={() => setViewingClinicalDataExam(exam)}
-                                    className="h-7 px-2 text-[11px] text-[#6F7780] hover:text-[#2F3942] hover:bg-[#E3E6E8]/50"
-                                    title="Ver Ficha Clínica"
+                                    onClick={() => {
+                                      setReturningExam(exam)
+                                      setReturnReason('')
+                                    }}
+                                    className="h-7 px-1.5 text-xs text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                                    title="Devolver exame à clínica com problema técnico"
                                   >
-                                    <FileText className="w-3 h-3 mr-1" />
-                                    <span className="hidden xl:inline">Ficha</span>
+                                    <RotateCcw className="w-3 h-3" />
                                   </Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
 
-                                  {/* Ação Principal: Assumir / Continuar / Revisar / Assinar */}
-                                  {exam.status === 'pending' && (
-                                    <Button
-                                      size="sm"
-                                      onClick={() => handleClaimExam(exam)}
-                                      disabled={isClaiming === exam.id}
-                                      className="h-7 text-xs bg-[#4A90D9] hover:bg-[#3b7dc2] text-white font-semibold px-2.5 shadow-xs"
-                                    >
-                                      {isClaiming === exam.id ? (
-                                        <>
-                                          <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                                          <span>Assumindo...</span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <UserCheck className="w-3 h-3 mr-1" />
-                                          <span>Assumir</span>
-                                        </>
+                          {/* Linha Expandida sob Demanda (Sem ocupar espaço permanentemente) */}
+                          {isExpanded && (
+                            <tr className="bg-[#F7F6F4]/40 border-b border-[#E3E6E8]">
+                              <td colSpan={7} className="p-3.5">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs bg-white p-3 rounded-lg border border-[#E3E6E8] shadow-2xs">
+                                  <div>
+                                    <span className="font-semibold text-[#2F3942] block">
+                                      Indicação Clínica:
+                                    </span>
+                                    <p className="text-[#6F7780] text-[11px] mt-0.5 italic">
+                                      {exam.clinical_indication || 'Nenhuma indicação cadastrada.'}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <span className="font-semibold text-[#2F3942] block">
+                                      Sintomas & Medicamentos:
+                                    </span>
+                                    <p className="text-[#6F7780] text-[11px] mt-0.5">
+                                      <strong>Sintomas:</strong> {exam.symptoms || '—'}
+                                      <br />
+                                      <strong>Medicamentos:</strong>{' '}
+                                      {exam.medications_in_use || '—'}
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <span className="font-semibold text-[#2F3942] block">
+                                      Metadados da Solicitação:
+                                    </span>
+                                    <div className="text-[11px] text-[#6F7780] space-y-0.5">
+                                      <div>
+                                        ID: <span className="font-mono">{exam.id}</span>
+                                      </div>
+                                      <div>
+                                        Entrada: {new Date(exam.created).toLocaleString('pt-BR')}
+                                      </div>
+                                      {exam.return_reason && (
+                                        <div className="text-red-700 font-semibold bg-red-50 p-1 rounded border border-red-200 mt-1">
+                                          Motivo da Devolução: {exam.return_reason}
+                                        </div>
                                       )}
-                                    </Button>
-                                  )}
-
-                                  {exam.status === 'in_analysis' && isAssignedToMe && (
-                                    <Button
-                                      size="sm"
-                                      onClick={() => setActiveExam(exam)}
-                                      className="h-7 text-xs bg-[#2F3942] hover:bg-[#1f262c] text-white font-semibold px-2.5 shadow-xs"
-                                    >
-                                      <Activity className="w-3 h-3 mr-1 text-[#4A90D9]" />
-                                      <span>Continuar</span>
-                                    </Button>
-                                  )}
-
-                                  {exam.status === 'in_analysis' && isAssignedToOther && (
-                                    <Badge
-                                      variant="outline"
-                                      className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] px-2 py-0.5"
-                                    >
-                                      Outro Médico
-                                    </Badge>
-                                  )}
-
-                                  {exam.status === 'waiting_signature' && (
-                                    <>
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => setActiveExam(exam)}
-                                        className="h-7 text-xs border-[#4A90D9]/40 text-[#4A90D9] hover:bg-[#4A90D9]/5 font-semibold px-2"
-                                      >
-                                        <CheckCircle className="w-3 h-3 mr-1" />
-                                        <span>Revisar</span>
-                                      </Button>
-
-                                      <Button
-                                        size="sm"
-                                        onClick={async () => {
-                                          setIsOpeningBirdIdModal(exam.id)
-                                          try {
-                                            const docs = await documentService.getDocumentsForExam(
-                                              exam.id,
-                                            )
-                                            if (docs && docs.length > 0) {
-                                              setBirdIdModalDoc(docs[0])
-                                              setBirdIdModalExam(exam)
-                                            } else {
-                                              alert(
-                                                'Nenhum documento preparado para assinatura encontrado neste exame. Abra o editor e prepare o PDF.',
-                                              )
-                                            }
-                                          } catch (err: any) {
-                                            alert(`Erro ao carregar documento: ${err.message}`)
-                                          } finally {
-                                            setIsOpeningBirdIdModal(null)
-                                          }
-                                        }}
-                                        disabled={isOpeningBirdIdModal === exam.id}
-                                        className="h-7 text-xs bg-[#4A90D9] hover:bg-[#3b7dc2] text-white font-semibold px-2.5 shadow-xs"
-                                        title="Assinar com Bird ID Pro"
-                                      >
-                                        {isOpeningBirdIdModal === exam.id ? (
-                                          <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                                        ) : (
-                                          <PenTool className="w-3 h-3 mr-1" />
-                                        )}
-                                        <span>Assinar</span>
-                                      </Button>
-                                    </>
-                                  )}
-
-                                  {/* Ação de Devolver com Problema Técnico */}
-                                  {exam.status !== 'returned' && exam.status !== 'reported' && (
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => {
-                                        setReturningExam(exam)
-                                        setReturnReason('')
-                                      }}
-                                      className="h-7 px-1.5 text-xs text-rose-700 hover:bg-rose-50 hover:text-rose-800"
-                                      title="Devolver exame à clínica com problema técnico"
-                                    >
-                                      <RotateCcw className="w-3 h-3" />
-                                    </Button>
-                                  )}
+                                    </div>
+                                  </div>
                                 </div>
                               </td>
                             </tr>
-
-                            {/* Linha Expandida sob Demanda (Sem ocupar espaço permanentemente) */}
-                            {isExpanded && (
-                              <tr className="bg-[#F7F6F4]/40 border-b border-[#E3E6E8]">
-                                <td colSpan={7} className="p-3.5">
-                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs bg-white p-3 rounded-lg border border-[#E3E6E8] shadow-2xs">
-                                    <div>
-                                      <span className="font-semibold text-[#2F3942] block">
-                                        Indicação Clínica:
-                                      </span>
-                                      <p className="text-[#6F7780] text-[11px] mt-0.5 italic">
-                                        {exam.clinical_indication ||
-                                          'Nenhuma indicação cadastrada.'}
-                                      </p>
-                                    </div>
-                                    <div>
-                                      <span className="font-semibold text-[#2F3942] block">
-                                        Sintomas & Medicamentos:
-                                      </span>
-                                      <p className="text-[#6F7780] text-[11px] mt-0.5">
-                                        <strong>Sintomas:</strong> {exam.symptoms || '—'}
-                                        <br />
-                                        <strong>Medicamentos:</strong>{' '}
-                                        {exam.medications_in_use || '—'}
-                                      </p>
-                                    </div>
-                                    <div className="space-y-1">
-                                      <span className="font-semibold text-[#2F3942] block">
-                                        Metadados da Solicitação:
-                                      </span>
-                                      <div className="text-[11px] text-[#6F7780] space-y-0.5">
-                                        <div>
-                                          ID: <span className="font-mono">{exam.id}</span>
-                                        </div>
-                                        <div>
-                                          Entrada: {new Date(exam.created).toLocaleString('pt-BR')}
-                                        </div>
-                                        {exam.return_reason && (
-                                          <div className="text-red-700 font-semibold bg-red-50 p-1 rounded border border-red-200 mt-1">
-                                            Motivo da Devolução: {exam.return_reason}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        )
-                      })}
-                    </tbody>
+                          )}
+                        </tbody>
+                      )
+                    })}
                   </table>
                 </div>
               )}

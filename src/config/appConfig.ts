@@ -3,9 +3,9 @@
  * Evita strings fixas desatualizadas espalhadas pelos componentes.
  */
 export const APP_CONFIG = {
-  version: '0.0.47',
-  versionLabel: 'v0.0.47',
-  stageName: 'MVP Telelaudos de ECG — Assinatura Digital Externa ICP-Brasil & Fluxo Simplificado',
+  version: '0.0.48',
+  versionLabel: 'v0.0.48',
+  stageName: 'Central de Telelaudos de ECG — Acesso Limpo, Seguro e Identidade Institucional',
   sessionDurationLabel: '12 horas (43.200s)',
   sessionDurationSecs: 43200,
   idleTimeoutLabel: '30 minutos',
@@ -14,5 +14,8 @@ export const APP_CONFIG = {
   features: {
     autoSigningProvidersEnabled: false,
     externalSigningOnly: true,
+    // Segurança: desativação estrita de autenticação simulada e perfis de teste no ambiente operacional
+    allowTestProfilesQuickLogin: false,
+    enforcePasswordChangeOnDefaultCredentials: true,
   },
 } as const

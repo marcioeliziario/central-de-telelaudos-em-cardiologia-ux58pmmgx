@@ -19,6 +19,8 @@ interface AuthContextType {
   switchOrg: (orgId: string) => void
   switchEnvironment: (env: 'admin' | 'cardiologist') => void
   requestPasswordReset: (email: string) => Promise<{ success: boolean; note?: string }>
+  updatePassword: (oldPassword: string, newPassword: string) => Promise<void>
+  mustChangePassword: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -30,6 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentRole, setCurrentRole] = useState<UserRole | null>(null)
   const [activeEnvironment, setActiveEnvironment] = useState<ActiveEnvironment>('admin')
   const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [mustChangePassword, setMustChangePassword] = useState<boolean>(false)
 
   // Lista de papéis ativos disponíveis para a conta autenticada
   const availableRoles = React.useMemo(() => {
@@ -60,6 +63,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const u = pb.authStore.record as unknown as AuthUser
       setUser(u)
+
+      // Verificar exigência de troca de credencial padrão (quando aplicável)
+      const isDefaultCredPending =
+        sessionStorage.getItem('telelaudos_force_pwd_change') === 'true' ||
+        u.must_change_password === true
+      setMustChangePassword(Boolean(isDefaultCredPending))
 
       const orgLinks = await pb.collection('user_organizations').getFullList<UserOrganization>({
         filter: `user_id = '${u.id}' && is_active = true`,
@@ -129,14 +138,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })
   }, [])
 
-  const login = async (email: string, pass: string) => {
+  const login = async (email: string, pass: string): Promise<void> => {
     setIsLoading(true)
     try {
       await pb.collection('users').authWithPassword(email, pass)
+
+      // Se o usuário utilizou a senha padrão conhecida de demonstração ("Skip@Pass"),
+      // exige sua substituição imediata antes de liberar acesso aos dados sensíveis
+      if (pass === 'Skip@Pass') {
+        sessionStorage.setItem('telelaudos_force_pwd_change', 'true')
+        setMustChangePassword(true)
+      } else {
+        sessionStorage.removeItem('telelaudos_force_pwd_change')
+        setMustChangePassword(false)
+      }
+
       await refreshProfile()
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const updatePassword = async (oldPassword: string, newPassword: string) => {
+    if (!user?.id) throw new Error('Sessão expirada. Faça login novamente.')
+    if (!newPassword || newPassword.length < 8) {
+      throw new Error('A nova senha deve ter no mínimo 8 caracteres.')
+    }
+    if (newPassword === 'Skip@Pass') {
+      throw new Error('A nova senha não pode ser a credencial padrão.')
+    }
+
+    await pb.collection('users').update(user.id, {
+      oldPassword,
+      password: newPassword,
+      passwordConfirm: newPassword,
+    })
+
+    sessionStorage.removeItem('telelaudos_force_pwd_change')
+    setMustChangePassword(false)
   }
 
   const logout = () => {
@@ -210,6 +249,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         switchOrg,
         switchEnvironment,
         requestPasswordReset,
+        updatePassword,
+        mustChangePassword,
       }}
     >
       {children}

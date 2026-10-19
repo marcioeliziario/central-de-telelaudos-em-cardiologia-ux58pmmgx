@@ -399,6 +399,7 @@ export interface AuthUser {
   mfa_verified_at?: string
   last_revoked_at?: string
   created: string
+  must_change_password?: boolean
 }
 
 export interface MfaRecoveryCode {

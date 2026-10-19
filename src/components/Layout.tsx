@@ -147,14 +147,16 @@ export default function Layout() {
         <div className="max-w-[1360px] mx-auto px-4 sm:px-6 h-18 flex items-center justify-between gap-4">
           {/* LOGOMARCA OFICIAL & IDENTIDADE MÉDICA */}
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="lg:hidden p-2 rounded-lg text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4] transition-colors"
-              aria-label="Abrir menu de navegação"
-            >
-              {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
+            {isAuthenticated && user && (
+              <button
+                type="button"
+                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                className="lg:hidden p-2 rounded-lg text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4] transition-colors"
+                aria-label="Abrir menu de navegação"
+              >
+                {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+            )}
 
             <Link
               to="/"
@@ -260,174 +262,196 @@ export default function Layout() {
                 </Button>
               </div>
             ) : (
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-[#4A90D9]/10 text-[#4A90D9] border border-[#4A90D9]/25">
-                <span className="w-2 h-2 rounded-full bg-[#4A90D9] animate-pulse" />
-                <span>Ambiente Seguro • Central de Telelaudos</span>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-[#4A90D9]/10 text-[#4A90D9] border border-[#4A90D9]/20">
+                <span className="w-2 h-2 rounded-full bg-[#4A90D9]" />
+                <span className="hidden sm:inline">Acesso Restrito Autorizado</span>
+                <span className="sm:hidden">Acesso Seguro</span>
               </div>
             )}
           </div>
         </div>
       </header>
 
-      {/* CORPO PRINCIPAL COM BARRA LATERAL MÉDICA SÓBRIA */}
-      <div className="flex-1 w-full max-w-[1360px] mx-auto px-4 sm:px-6 py-6 flex gap-6">
-        {/* NAVEGAÇÃO LATERAL (DESKTOP) */}
-        <aside className="hidden lg:block w-64 shrink-0 space-y-4">
-          <div className="bg-white rounded-xl border border-[#E3E6E8] p-3 shadow-[0_1px_3px_rgba(47,57,66,0.03)]">
-            <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#6F7780] flex items-center justify-between">
-              <span>{isCardioMode ? 'Operação Clínica' : 'Módulos da Central'}</span>
-              <span className="text-[10px] font-normal text-[#4A90D9]">
-                {isCardioMode ? 'ECG' : 'Admin'}
-              </span>
+      {/* CORPO PRINCIPAL */}
+      {isAuthenticated && user ? (
+        /* Layout com Navegação Lateral para Usuários Autenticados */
+        <div className="flex-1 w-full max-w-[1360px] mx-auto px-4 sm:px-6 py-6 flex gap-6">
+          {/* NAVEGAÇÃO LATERAL (DESKTOP) */}
+          <aside className="hidden lg:block w-64 shrink-0 space-y-4">
+            <div className="bg-white rounded-xl border border-[#E3E6E8] p-3 shadow-[0_1px_3px_rgba(47,57,66,0.03)]">
+              <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#6F7780] flex items-center justify-between">
+                <span>{isCardioMode ? 'Operação Clínica' : 'Módulos da Central'}</span>
+                <span className="text-[10px] font-normal text-[#4A90D9]">
+                  {isCardioMode ? 'ECG' : 'Admin'}
+                </span>
+              </div>
+              <nav className="space-y-1">
+                {navItems.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
+                        item.active
+                          ? 'bg-[#4A90D9]/10 text-[#4A90D9] font-bold shadow-xs'
+                          : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Icon
+                          className={`w-4 h-4 ${item.active ? 'text-[#4A90D9]' : 'text-[#6F7780]'}`}
+                        />
+                        <span>{item.label}</span>
+                      </div>
+                      {item.active && <ChevronRight className="w-3.5 h-3.5 text-[#4A90D9]" />}
+                    </Link>
+                  )
+                })}
+              </nav>
             </div>
-            <nav className="space-y-1">
-              {navItems.map((item) => {
-                const Icon = item.icon
-                return (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                      item.active
-                        ? 'bg-[#4A90D9]/10 text-[#4A90D9] font-bold shadow-xs'
-                        : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Icon
-                        className={`w-4 h-4 ${item.active ? 'text-[#4A90D9]' : 'text-[#6F7780]'}`}
-                      />
-                      <span>{item.label}</span>
-                    </div>
-                    {item.active && <ChevronRight className="w-3.5 h-3.5 text-[#4A90D9]" />}
-                  </Link>
-                )
-              })}
-            </nav>
-          </div>
 
-          {/* Cartão de Resumo Institucional */}
-          <div className="bg-white rounded-xl border border-[#E3E6E8] p-4 text-xs text-[#6F7780] space-y-2.5 shadow-[0_1px_3px_rgba(47,57,66,0.03)]">
-            <div className="flex items-center gap-2 text-[#2F3942] font-bold text-xs">
-              <ShieldCheck className="w-4 h-4 text-[#4A90D9]" />
-              <span>Padrões e Diretrizes</span>
+            {/* Cartão de Resumo Institucional */}
+            <div className="bg-white rounded-xl border border-[#E3E6E8] p-4 text-xs text-[#6F7780] space-y-2.5 shadow-[0_1px_3px_rgba(47,57,66,0.03)]">
+              <div className="flex items-center gap-2 text-[#2F3942] font-bold text-xs">
+                <ShieldCheck className="w-4 h-4 text-[#4A90D9]" />
+                <span>Padrões e Diretrizes</span>
+              </div>
+              <p className="text-[11px] leading-relaxed">
+                Diretriz SBC 2022 • Trilha de Auditoria SHA-256 • Resolução CFM nº 2.314/2022 •
+                Sessão de 12h
+              </p>
+              <div className="pt-2 border-t border-[#E3E6E8] text-[10px] text-[#6F7780] flex items-center justify-between">
+                <span>Versão da Central</span>
+                <span className="font-mono font-semibold text-[#2F3942]">
+                  {APP_CONFIG.versionLabel}
+                </span>
+              </div>
             </div>
-            <p className="text-[11px] leading-relaxed">
-              Diretriz SBC 2022 • Trilha de Auditoria SHA-256 • Resolução CFM nº 2.314/2022 • Sessão
-              de 12h
-            </p>
-            <div className="pt-2 border-t border-[#E3E6E8] text-[10px] text-[#6F7780] flex items-center justify-between">
-              <span>Versão da Central</span>
-              <span className="font-mono font-semibold text-[#2F3942]">
-                {APP_CONFIG.versionLabel}
-              </span>
-            </div>
-          </div>
-        </aside>
+          </aside>
 
-        {/* GAVETA LATERAL MOBILE */}
-        {isSidebarOpen && (
-          <div className="fixed inset-0 z-50 lg:hidden flex">
-            <div
-              className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
-              onClick={() => setIsSidebarOpen(false)}
-            />
-            <div className="relative w-72 max-w-[80vw] bg-white h-full p-4 flex flex-col justify-between shadow-xl z-10 border-r border-[#E3E6E8]">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-[#E3E6E8]">
-                  <BrandLogo size="sm" layout="horizontal" />
-                  <button
-                    onClick={() => setIsSidebarOpen(false)}
-                    className="p-1.5 rounded-lg text-[#6F7780] hover:bg-[#F7F6F4]"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+          {/* GAVETA LATERAL MOBILE */}
+          {isSidebarOpen && (
+            <div className="fixed inset-0 z-50 lg:hidden flex">
+              <div
+                className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
+                onClick={() => setIsSidebarOpen(false)}
+              />
+              <div className="relative w-72 max-w-[80vw] bg-white h-full p-4 flex flex-col justify-between shadow-xl z-10 border-r border-[#E3E6E8]">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-[#E3E6E8]">
+                    <BrandLogo size="sm" layout="horizontal" />
+                    <button
+                      onClick={() => setIsSidebarOpen(false)}
+                      className="p-1.5 rounded-lg text-[#6F7780] hover:bg-[#F7F6F4]"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <nav className="space-y-1">
+                    {navItems.map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          onClick={() => setIsSidebarOpen(false)}
+                          className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium ${
+                            item.active
+                              ? 'bg-[#4A90D9]/10 text-[#4A90D9] font-bold'
+                              : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Icon className="w-4 h-4" />
+                            <span>{item.label}</span>
+                          </div>
+                        </Link>
+                      )
+                    })}
+                  </nav>
                 </div>
 
-                <nav className="space-y-1">
-                  {navItems.map((item) => {
-                    const Icon = item.icon
-                    return (
-                      <Link
-                        key={item.to}
-                        to={item.to}
-                        onClick={() => setIsSidebarOpen(false)}
-                        className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium ${
-                          item.active
-                            ? 'bg-[#4A90D9]/10 text-[#4A90D9] font-bold'
-                            : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <Icon className="w-4 h-4" />
-                          <span>{item.label}</span>
-                        </div>
-                      </Link>
-                    )
-                  })}
-                </nav>
-              </div>
-
-              <div className="text-[11px] text-[#6F7780] pt-4 border-t border-[#E3E6E8]">
-                Central de Telelaudos em Cardiologia
+                <div className="text-[11px] text-[#6F7780] pt-4 border-t border-[#E3E6E8]">
+                  Central de Telelaudos em Cardiologia
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ÁREA DE CONTEÚDO PRINCIPAL */}
-        <main className="flex-1 min-w-0 min-h-0">
+          {/* ÁREA DE CONTEÚDO PRINCIPAL (AUTENTICADO) */}
+          <main className="flex-1 min-w-0 min-h-0">
+            <Outlet />
+          </main>
+        </div>
+      ) : (
+        /* Layout Limpo e Centralizado para Usuários Não Autenticados (Login) */
+        <main className="flex-1 w-full flex items-center justify-center p-4">
           <Outlet />
         </main>
-      </div>
+      )}
 
-      {/* RODAPÉ INSTITUCIONAL SÓBRIO & REFINADO */}
-      <footer className="w-full bg-[#2F3942] text-slate-200 border-t border-[#1f262c] mt-12 py-8 transition-colors">
-        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-sm">
-          <div className="space-y-1 text-center md:text-left">
-            <div className="flex items-center justify-center md:justify-start gap-2 text-white font-semibold">
-              <BrandLogo size="sm" showText={false} />
-              <span>Márcio Eliziário — Clínica Médica e Cardiologia</span>
-            </div>
-            <p className="text-[#A2ABB3] text-xs max-w-2xl leading-relaxed">
-              Central de Telelaudos em Eletrocardiografia alinhada às Diretrizes da SBC e do CFM.
-              Imutabilidade documental com SHA-256, segurança em repouso AES-256 e auditoria
-              contínua de acessos.
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center gap-4 text-xs text-[#A2ABB3] shrink-0">
-            {isAdminMode && (
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/admin/teste-assinatura"
-                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs font-semibold"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-[#4A90D9]" />
-                  <span>ICP-Brasil</span>
-                </Link>
-                <Link
-                  to="/homologacao"
-                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs"
-                >
-                  <FileText className="w-3.5 h-3.5 text-slate-300" />
-                  <span>Homologação</span>
-                </Link>
-                <Link
-                  to="/admin/auditoria-infra"
-                  className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs"
-                >
-                  <Server className="w-3.5 h-3.5 text-slate-300" />
-                  <span>Infraestrutura</span>
-                </Link>
+      {/* RODAPÉ INSTITUCIONAL */}
+      {isAuthenticated && user ? (
+        <footer className="w-full bg-[#2F3942] text-slate-200 border-t border-[#1f262c] mt-12 py-8 transition-colors">
+          <div className="max-w-[1360px] mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-sm">
+            <div className="space-y-1 text-center md:text-left">
+              <div className="flex items-center justify-center md:justify-start gap-2 text-white font-semibold">
+                <BrandLogo size="sm" showText={false} />
+                <span>Márcio Eliziário — Clínica Médica e Cardiologia</span>
               </div>
-            )}
-            <div className="flex items-center gap-1.5 text-[#A2ABB3] font-mono text-[11px]">
-              <span>Central {APP_CONFIG.versionLabel}</span>
+              <p className="text-[#A2ABB3] text-xs max-w-2xl leading-relaxed">
+                Central de Telelaudos em Eletrocardiografia alinhada às Diretrizes da SBC e do CFM.
+                Imutabilidade documental com SHA-256, segurança em repouso AES-256 e auditoria
+                contínua de acessos.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-4 text-xs text-[#A2ABB3] shrink-0">
+              {isAdminMode && (
+                <div className="flex items-center gap-2">
+                  <Link
+                    to="/admin/teste-assinatura"
+                    className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs font-semibold"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#4A90D9]" />
+                    <span>ICP-Brasil</span>
+                  </Link>
+                  <Link
+                    to="/homologacao"
+                    className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-slate-300" />
+                    <span>Homologação</span>
+                  </Link>
+                  <Link
+                    to="/admin/auditoria-infra"
+                    className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs"
+                  >
+                    <Server className="w-3.5 h-3.5 text-slate-300" />
+                    <span>Infraestrutura</span>
+                  </Link>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 text-[#A2ABB3] font-mono text-[11px]">
+                <span>Central {APP_CONFIG.versionLabel}</span>
+              </div>
             </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      ) : (
+        <footer className="w-full border-t border-[#E3E6E8] py-4 bg-white text-center text-xs text-[#6F7780]">
+          <div className="max-w-md mx-auto px-4 flex flex-col items-center gap-1">
+            <span className="font-medium text-[#2F3942]">
+              Márcio Eliziário — Clínica Médica e Cardiologia
+            </span>
+            <span className="text-[11px] text-[#8C959E]">
+              Central de Telelaudos de ECG • Plataforma em conformidade com CFM e SBC
+            </span>
+          </div>
+        </footer>
+      )}
     </div>
   )
 }

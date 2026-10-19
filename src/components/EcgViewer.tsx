@@ -392,8 +392,9 @@ export default function EcgViewer({
     [pan, clampPan],
   )
 
-  const handleZoomIn = () => applyZoom(zoom + 0.25)
-  const handleZoomOut = () => applyZoom(zoom - 0.25)
+  // Passos suaves e estáveis para ajuste fino de imagem médica (zoom 50%–600%)
+  const handleZoomIn = () => applyZoom(Math.round((zoom + 0.1) * 100) / 100)
+  const handleZoomOut = () => applyZoom(Math.round((zoom - 0.1) * 100) / 100)
   const handleResetView = () => {
     setZoom(1)
     setRotation(0)
@@ -407,11 +408,29 @@ export default function EcgViewer({
   const handleRotateCw = () => setRotation((prev) => (prev + 90) % 360)
   const handleRotateCcw = () => setRotation((prev) => (prev - 90 + 360) % 360)
 
-  // Roda do mouse com zoom centrado no cursor (suporta Ctrl+Wheel ou Wheel direto na área da imagem)
+  // Roda do mouse com zoom centrado no cursor:
+  // Fator multiplicativo suave (1.08 por notch/step padrão) com normalização de deltaY e deltaMode
+  // para evitar saltos bruscos em trackpads e mouses com rotação rápida.
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault()
-    const zoomDelta = e.deltaY < 0 ? 0.2 : -0.2
-    applyZoom(zoom + zoomDelta, { clientX: e.clientX, clientY: e.clientY })
+
+    // Normaliza delta de acordo com deltaMode (0: pixels, 1: linhas, 2: páginas)
+    let rawDelta = e.deltaY
+    if (e.deltaMode === 1) {
+      rawDelta *= 20 // linhas -> px aprox
+    } else if (e.deltaMode === 2) {
+      rawDelta *= 60 // páginas -> px aprox
+    }
+
+    if (rawDelta === 0) return
+
+    // Normaliza notches/passos da roda: limita o passo máximo por evento para estabilidade médica
+    const notches = Math.max(-2, Math.min(2, -rawDelta / 100))
+    // Fator base de 1.08 (~8% por notch padrão)
+    const factor = Math.pow(1.08, notches)
+    const targetZoom = Math.round(zoom * factor * 1000) / 1000
+
+    applyZoom(targetZoom, { clientX: e.clientX, clientY: e.clientY })
   }
 
   // Pan por arraste com contenção (clamp)

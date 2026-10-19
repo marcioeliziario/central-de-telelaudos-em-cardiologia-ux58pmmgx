@@ -120,6 +120,7 @@ export default function EcgViewer({
   const [numPages, setNumPages] = useState<number>(0)
   const [isRenderingPdfPage, setIsRenderingPdfPage] = useState<boolean>(false)
   const pdfCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const currentRenderTaskRef = useRef<pdfjsLib.RenderTask | null>(null)
 
   // Resetar estado quando o exame muda
   useEffect(() => {
@@ -296,15 +297,37 @@ export default function EcgViewer({
     }
   }, [isPdf, pdfData, fileBlobUrl, fileUrl])
 
-  // Renderizar página do PDF em canvas nativo
+  // Renderizar página do PDF em canvas nativo com cancelamento seguro de tarefas concorrentes
   const renderPdfPage = useCallback(
     async (pageNum: number) => {
       if (!pdfDoc || !pdfCanvasRef.current) return
+
+      // Cancelar qualquer renderização em andamento no mesmo canvas e aguardar sua liberação
+      if (currentRenderTaskRef.current) {
+        try {
+          currentRenderTaskRef.current.cancel()
+          await currentRenderTaskRef.current.promise
+        } catch (cancelErr: unknown) {
+          // Exceção de cancelamento esperada (RenderingCancelledException) - ignorar com segurança
+          const isCancelled =
+            (cancelErr &&
+              typeof cancelErr === 'object' &&
+              'name' in cancelErr &&
+              cancelErr.name === 'RenderingCancelledException') ||
+            (cancelErr instanceof Error && cancelErr.name === 'RenderingCancelledException')
+          if (!isCancelled) {
+            console.debug('Aviso no cancelamento da tarefa anterior:', cancelErr)
+          }
+        } finally {
+          currentRenderTaskRef.current = null
+        }
+      }
 
       try {
         setIsRenderingPdfPage(true)
         const page = await pdfDoc.getPage(pageNum)
         const canvas = pdfCanvasRef.current
+        if (!canvas) return
         const context = canvas.getContext('2d')
         if (!context) return
 
@@ -326,10 +349,21 @@ export default function EcgViewer({
           transform,
         }
 
-        await page.render(renderContext).promise
-      } catch (err: any) {
-        console.error('Falha ao renderizar página do PDF:', err)
+        const renderTask = page.render(renderContext)
+        currentRenderTaskRef.current = renderTask
+        await renderTask.promise
+      } catch (err: unknown) {
+        const isCancelled =
+          (err &&
+            typeof err === 'object' &&
+            'name' in err &&
+            err.name === 'RenderingCancelledException') ||
+          (err instanceof Error && err.name === 'RenderingCancelledException')
+        if (!isCancelled) {
+          console.error('Falha ao renderizar página do PDF:', err)
+        }
       } finally {
+        currentRenderTaskRef.current = null
         setIsRenderingPdfPage(false)
       }
     },
@@ -339,6 +373,18 @@ export default function EcgViewer({
   useEffect(() => {
     if (pdfDoc && currentPage > 0) {
       renderPdfPage(currentPage)
+    }
+
+    return () => {
+      // Ao trocar de página, documento ou desmontar, cancela a renderização em andamento
+      if (currentRenderTaskRef.current) {
+        try {
+          currentRenderTaskRef.current.cancel()
+        } catch {
+          /* ignorado em cleanup */
+        }
+        currentRenderTaskRef.current = null
+      }
     }
   }, [pdfDoc, currentPage, renderPdfPage])
 

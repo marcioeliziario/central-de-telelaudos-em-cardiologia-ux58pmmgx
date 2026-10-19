@@ -80,6 +80,7 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [isRenderingPage, setIsRenderingPage] = useState<boolean>(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const currentRenderTaskRef = useRef<pdfjsLib.RenderTask | null>(null)
 
   // Carregar documento PDF a partir de bytes ou URL
   useEffect(() => {
@@ -138,15 +139,37 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
     }
   }, [isOpen, pdfData, pdfUrl])
 
-  // Renderizar página no canvas
+  // Renderizar página no canvas com cancelamento seguro de tarefas concorrentes
   const renderPage = useCallback(
     async (pageNum: number) => {
       if (!pdfDoc || !canvasRef.current) return
+
+      // Cancelar qualquer renderização em andamento no mesmo canvas e aguardar sua liberação
+      if (currentRenderTaskRef.current) {
+        try {
+          currentRenderTaskRef.current.cancel()
+          await currentRenderTaskRef.current.promise
+        } catch (cancelErr: unknown) {
+          // Exceção de cancelamento esperada (RenderingCancelledException) - ignorar com segurança
+          const isCancelled =
+            (cancelErr &&
+              typeof cancelErr === 'object' &&
+              'name' in cancelErr &&
+              cancelErr.name === 'RenderingCancelledException') ||
+            (cancelErr instanceof Error && cancelErr.name === 'RenderingCancelledException')
+          if (!isCancelled) {
+            console.debug('Aviso no cancelamento da tarefa anterior:', cancelErr)
+          }
+        } finally {
+          currentRenderTaskRef.current = null
+        }
+      }
 
       try {
         setIsRenderingPage(true)
         const page = await pdfDoc.getPage(pageNum)
         const canvas = canvasRef.current
+        if (!canvas) return
         const context = canvas.getContext('2d')
         if (!context) return
 
@@ -167,10 +190,21 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
           transform,
         }
 
-        await page.render(renderContext).promise
-      } catch (err: any) {
-        console.error('Falha ao renderizar página:', err)
+        const renderTask = page.render(renderContext)
+        currentRenderTaskRef.current = renderTask
+        await renderTask.promise
+      } catch (err: unknown) {
+        const isCancelled =
+          (err &&
+            typeof err === 'object' &&
+            'name' in err &&
+            err.name === 'RenderingCancelledException') ||
+          (err instanceof Error && err.name === 'RenderingCancelledException')
+        if (!isCancelled) {
+          console.error('Falha ao renderizar página:', err)
+        }
       } finally {
+        currentRenderTaskRef.current = null
         setIsRenderingPage(false)
       }
     },
@@ -180,6 +214,18 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
   useEffect(() => {
     if (pdfDoc && currentPage > 0) {
       renderPage(currentPage)
+    }
+
+    return () => {
+      // Ao trocar de página, zoom, rotação, documento ou fechar modal, cancela a renderização em andamento
+      if (currentRenderTaskRef.current) {
+        try {
+          currentRenderTaskRef.current.cancel()
+        } catch {
+          /* ignorado em cleanup */
+        }
+        currentRenderTaskRef.current = null
+      }
     }
   }, [pdfDoc, currentPage, zoom, rotation, renderPage])
 

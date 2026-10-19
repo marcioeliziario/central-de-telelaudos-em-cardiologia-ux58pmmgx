@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import * as pdfjsLib from 'pdfjs-dist'
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { pdfjsLib, initPdfWorker } from '@/lib/pdfWorkerConfig'
 import {
   Dialog,
   DialogContent,
@@ -26,8 +25,8 @@ import {
   FileDown,
 } from 'lucide-react'
 
-// Configura o worker do PDF.js bundled pelo Vite
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
+// Garante worker configurado
+initPdfWorker()
 
 export interface PdfViewerModalProps {
   isOpen: boolean
@@ -105,14 +104,10 @@ export const PdfViewerModal: React.FC<PdfViewerModalProps> = ({
           const copy = new Uint8Array(pdfData)
           loadingTask = pdfjsLib.getDocument({
             data: copy,
-            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
-            cMapPacked: true,
           })
         } else if (pdfUrl) {
           loadingTask = pdfjsLib.getDocument({
             url: pdfUrl,
-            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
-            cMapPacked: true,
           })
         } else {
           throw new Error('Nenhuma fonte de PDF fornecida para renderização.')

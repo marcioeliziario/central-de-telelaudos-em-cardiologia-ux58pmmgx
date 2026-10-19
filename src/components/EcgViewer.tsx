@@ -4,8 +4,7 @@ import { ExamRequest } from '@/types/telelaudos'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import * as pdfjsLib from 'pdfjs-dist'
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import { pdfjsLib, initPdfWorker } from '@/lib/pdfWorkerConfig'
 import {
   ZoomIn,
   ZoomOut,
@@ -31,8 +30,8 @@ import {
   ChevronRight,
 } from 'lucide-react'
 
-// Configura o worker do PDF.js bundled pelo Vite
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
+// Garante worker configurado
+initPdfWorker()
 
 interface EcgViewerProps {
   exam: ExamRequest
@@ -266,20 +265,14 @@ export default function EcgViewer({
           const copy = new Uint8Array(pdfData)
           loadingTask = pdfjsLib.getDocument({
             data: copy,
-            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
-            cMapPacked: true,
           })
         } else if (fileBlobUrl) {
           loadingTask = pdfjsLib.getDocument({
             url: fileBlobUrl,
-            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
-            cMapPacked: true,
           })
         } else {
           loadingTask = pdfjsLib.getDocument({
             url: fileUrl,
-            cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
-            cMapPacked: true,
           })
         }
 

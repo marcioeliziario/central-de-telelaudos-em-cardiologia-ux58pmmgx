@@ -70,27 +70,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         u.must_change_password === true
       setMustChangePassword(Boolean(isDefaultCredPending))
 
-      const orgLinks = await pb.collection('user_organizations').getFullList<UserOrganization>({
-        filter: `user_id = '${u.id}' && is_active = true`,
-        expand: 'organization_id',
-      })
+      let orgLinks: UserOrganization[] = []
+      try {
+        orgLinks = await pb.collection('user_organizations').getFullList<UserOrganization>({
+          filter: `user_id = '${u.id}' && is_active = true`,
+          expand: 'organization_id',
+        })
+      } catch (fetchErr) {
+        console.error('Falha ao buscar vínculos de user_organizations:', fetchErr)
+        // Fallback defensivo com filtro alternativo caso a requisição inicial falhe
+        try {
+          const fallbackList = await pb
+            .collection('user_organizations')
+            .getList<UserOrganization>(1, 50, {
+              filter: `user_id = '${u.id}'`,
+              expand: 'organization_id',
+            })
+          orgLinks = fallbackList.items.filter((item) => item.is_active !== false)
+        } catch {
+          /* intentionally ignored */
+        }
+      }
 
       setUserOrgs(orgLinks)
 
       if (orgLinks.length > 0) {
         const rolesInOrgs = Array.from(new Set(orgLinks.map((l) => l.role)))
 
-        // Determinar ambiente ativo salvo ou prioritário
+        // Determinar ambiente ativo salvo ou padrão por papel
         const savedEnv = localStorage.getItem(
           'telelaudos_active_environment',
         ) as ActiveEnvironment | null
         let resolvedEnv: ActiveEnvironment = 'admin'
 
+        // Contas com ambos os papéis autorizados (ex: Dr. Márcio — Administrador e Cardiologista):
+        // Padrão de redirecionamento após autenticação é o ambiente 'cardiologist' (Meus Exames / Laudos),
+        // preservando a alternância para Administração no cabeçalho.
         if (rolesInOrgs.includes('admin') && rolesInOrgs.includes('cardiologist')) {
           if (savedEnv === 'cardiologist' || savedEnv === 'admin') {
             resolvedEnv = savedEnv
           } else {
-            resolvedEnv = 'admin' // Padrão prioritário para admin
+            resolvedEnv = 'cardiologist'
           }
         } else if (rolesInOrgs.includes('admin')) {
           resolvedEnv = 'admin'
@@ -107,7 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         setActiveEnvironment(resolvedEnv)
 
-        // Selecionar vínculo correspondente ao ambiente ativo
+        // Selecionar vínculo e organização correspondente ao ambiente ativo
         let matchingLink = orgLinks.find((l) => l.role === (resolvedEnv as unknown as UserRole))
         if (!matchingLink) {
           const savedOrgId = localStorage.getItem('telelaudos_current_org_id')
@@ -117,6 +137,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentRole(matchingLink.role)
         if (matchingLink.expand?.organization_id) {
           setCurrentOrg(matchingLink.expand.organization_id)
+        } else {
+          // Se expand não veio preenchido, busca a organização individualmente
+          try {
+            const org = await pb
+              .collection('organizations')
+              .getOne<Organization>(matchingLink.organization_id)
+            setCurrentOrg(org)
+          } catch {
+            /* intentionally ignored */
+          }
         }
       } else {
         // Usuário sem organização vinculada

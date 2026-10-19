@@ -219,20 +219,8 @@ export default function CentralDashboard() {
     )
   }
 
-  // Roteamento conforme activeEnvironment (prioritário para multi-perfil Dr. Márcio)
-  // e isolamento estrito para perfis de clínicas contratantes
-  if (activeEnvironment === 'cardiologist' || currentRole === 'cardiologist') {
-    if (activeEnvironment === 'cardiologist') {
-      return <CardiologistDashboard />
-    }
-  }
-
-  if (activeEnvironment === 'admin' || currentRole === 'admin') {
-    if (activeEnvironment === 'admin') {
-      return <AdminDashboard />
-    }
-  }
-
+  // Roteamento de ambientes conforme papel do usuário e seleção ativa:
+  // 1. Usuários de clínicas contratantes (isolamento estrito: portal da clínica apenas)
   if (
     currentRole === 'clinic_manager' ||
     currentRole === 'clinic_operator' ||
@@ -241,6 +229,16 @@ export default function CentralDashboard() {
     return <ClinicDashboard />
   }
 
+  // 2. Ambiente ativo selecionado (para usuários multi-papel ou perfil direto)
+  if (activeEnvironment === 'cardiologist') {
+    return <CardiologistDashboard />
+  }
+
+  if (activeEnvironment === 'admin') {
+    return <AdminDashboard />
+  }
+
+  // 3. Fallback por currentRole
   if (currentRole === 'admin') {
     return <AdminDashboard />
   }

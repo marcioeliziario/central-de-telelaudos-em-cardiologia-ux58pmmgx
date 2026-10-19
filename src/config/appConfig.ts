@@ -3,9 +3,9 @@
  * Evita strings fixas desatualizadas espalhadas pelos componentes.
  */
 export const APP_CONFIG = {
-  version: '0.0.49',
-  versionLabel: 'v0.0.49',
-  stageName: 'Central de Telelaudos de ECG — Acesso Limpo, Seguro e Identidade Institucional',
+  version: '0.0.50',
+  versionLabel: 'v0.0.50',
+  stageName: 'Central de Telelaudos de ECG — Simplificação e Organização do Painel Administrativo',
   sessionDurationLabel: '12 horas (43.200s)',
   sessionDurationSecs: 43200,
   idleTimeoutLabel: '30 minutos',

@@ -3,48 +3,94 @@ import { Outlet, Link, useLocation } from 'react-router-dom'
 import {
   Activity,
   ShieldCheck,
-  FileText,
-  FileCheck,
-  CheckCircle2,
-  LogOut,
   Building2,
-  Server,
-  HardDrive,
+  Users,
+  FileText,
+  DollarSign,
+  Settings,
   LayoutDashboard,
   Menu,
   X,
   ChevronRight,
-  User,
-  ShieldAlert,
+  LogOut,
+  PenTool,
+  Clock,
+  FileCheck,
+  PanelLeftClose,
+  PanelLeft,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { BrandLogo } from '@/components/BrandLogo'
-import { APP_CONFIG } from '@/config/appConfig'
-import { PenTool, Settings, Inbox, Clock } from 'lucide-react'
 
 export default function Layout() {
   const {
     user,
     isAuthenticated,
-    currentOrg,
-    currentRole,
     logout,
-    userOrgs,
-    switchOrg,
     activeEnvironment,
     switchEnvironment,
     canSwitchEnvironment,
   } = useAuth()
   const location = useLocation()
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+
+  // Sidebar mobile (aberta/fechada)
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
+  // Sidebar desktop recolhível (expandida/colapsada)
+  const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(false)
 
   const isCardioMode = activeEnvironment === 'cardiologist'
   const isAdminMode = activeEnvironment === 'admin'
 
-  // Itens clínicos estritos para o perfil de cardiologista
-  // (Fila de exames, laudos em elaboração, aguardando assinatura, minha assinatura e certificado, configurações de conta — SEM auditoria/configurações globais)
+  // Query string atual (para manter estados de tab/section)
+  const searchParams = new URLSearchParams(location.search)
+  const currentSection = searchParams.get('section') || 'overview'
+
+  // MENU ADMINISTRATIVO SIMPLIFICADO: 5 SEÇÕES PRINCIPAIS + 1 ACESSO SECUNDÁRIO CONFIGURAÇÕES
+  const adminMainSections = [
+    {
+      to: '/?section=overview',
+      label: 'Visão Geral',
+      icon: LayoutDashboard,
+      active:
+        location.pathname === '/' &&
+        (!searchParams.get('section') || currentSection === 'overview'),
+    },
+    {
+      to: '/?section=clinics',
+      label: 'Clínicas',
+      icon: Building2,
+      active: location.pathname === '/' && currentSection === 'clinics',
+    },
+    {
+      to: '/?section=users',
+      label: 'Usuários e Médicos',
+      icon: Users,
+      active: location.pathname === '/' && currentSection === 'users',
+    },
+    {
+      to: '/?section=exams',
+      label: 'Exames',
+      icon: FileText,
+      active: location.pathname === '/' && currentSection === 'exams',
+    },
+    {
+      to: '/?section=finance',
+      label: 'Financeiro',
+      icon: DollarSign,
+      active: location.pathname === '/' && currentSection === 'finance',
+    },
+  ]
+
+  const adminSecondarySection = {
+    to: '/?section=settings',
+    label: 'Configurações',
+    icon: Settings,
+    active: location.pathname === '/' && currentSection === 'settings',
+  }
+
+  // Itens clínicos para o perfil de cardiologista
   const clinicalNavItems = [
     {
       to: '/',
@@ -79,116 +125,77 @@ export default function Layout() {
     },
   ]
 
-  // Itens estritos para o perfil administrativo da Central
-  // (Painel central, clínicas/contratos, faturamento, auditoria, homologação, monitoramento — SEM fila de ECGs como função principal)
-  const adminNavItems = [
-    {
-      to: '/',
-      label: 'Painel Central',
-      icon: LayoutDashboard,
-      active: location.pathname === '/',
-    },
-    {
-      to: '/auditoria',
-      label: 'Auditoria de Viabilidade',
-      icon: FileText,
-      active: location.pathname === '/auditoria',
-    },
-    {
-      to: '/homologacao',
-      label: 'Homologação 4B',
-      icon: FileCheck,
-      active: location.pathname === '/homologacao',
-    },
-    {
-      to: '/admin/teste-assinatura',
-      label: 'Teste ICP-Brasil (6B)',
-      icon: ShieldCheck,
-      active: location.pathname === '/admin/teste-assinatura',
-    },
-    {
-      to: '/admin/auditoria-infra',
-      label: 'Auditoria Infra (E8)',
-      icon: Server,
-      active: location.pathname === '/admin/auditoria-infra',
-    },
-    {
-      to: '/admin/backup-continuidade',
-      label: 'Backup & DR (E10)',
-      icon: HardDrive,
-      active: location.pathname === '/admin/backup-continuidade',
-    },
-  ]
-
-  // Menu visível estritamente conforme o ambiente ativo selecionado
-  const navItems = isCardioMode ? clinicalNavItems : adminNavItems
-
-  const getRoleLabel = (role: string | null) => {
-    switch (role) {
-      case 'admin':
-        return 'Administrador Geral'
-      case 'cardiologist':
-        return 'Médico Cardiologista'
-      case 'clinic_manager':
-        return 'Gestor de Clínica'
-      case 'clinic_operator':
-        return 'Operador Clínico'
-      case 'financial':
-        return 'Gestor Financeiro'
-      default:
-        return 'Usuário Autenticado'
-    }
-  }
-
   return (
     <div className="min-h-screen min-h-[100dvh] flex flex-col bg-[#F7F6F4] text-[#2F3942] antialiased selection:bg-[#4A90D9] selection:text-white">
-      {/* CABEÇALHO SUPERIOR SÓBRIO E ELEGANTE */}
-      <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-[#E3E6E8] shadow-[0_1px_3px_rgba(47,57,66,0.04)]">
-        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 h-18 flex items-center justify-between gap-4">
-          {/* LOGOMARCA OFICIAL & IDENTIDADE MÉDICA */}
+      {/*
+        CABEÇALHO SÓBRIO E LIMPO
+        Contém somente: Identificação da Central, Ambiente atual, Perfil conectado e
+        Alternância entre Administração e Cardiologia para usuários autorizados.
+      */}
+      <header className="sticky top-0 z-40 w-full bg-white border-b border-[#E3E6E8] shadow-[0_1px_3px_rgba(47,57,66,0.04)]">
+        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+          {/* IDENTIFICAÇÃO DA CENTRAL & CONTROLE DO MENU LATERAL */}
           <div className="flex items-center gap-3">
             {isAuthenticated && user && (
-              <button
-                type="button"
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="lg:hidden p-2 rounded-lg text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4] transition-colors"
-                aria-label="Abrir menu de navegação"
-              >
-                {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </button>
+              <>
+                {/* Botão Mobile para abrir Gaveta */}
+                <button
+                  type="button"
+                  onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+                  className="lg:hidden p-2 rounded-lg text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4] transition-colors"
+                  aria-label="Menu principal"
+                >
+                  {isMobileSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                </button>
+
+                {/* Botão Desktop para recolher/expandir sidebar lateral */}
+                <button
+                  type="button"
+                  onClick={() => setIsDesktopCollapsed(!isDesktopCollapsed)}
+                  className="hidden lg:flex p-2 rounded-lg text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4] transition-colors"
+                  title={isDesktopCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+                  aria-label="Recolher menu lateral"
+                >
+                  {isDesktopCollapsed ? (
+                    <PanelLeft className="w-4 h-4" />
+                  ) : (
+                    <PanelLeftClose className="w-4 h-4" />
+                  )}
+                </button>
+              </>
             )}
 
             <Link
               to="/"
               className="group flex items-center transition-opacity hover:opacity-95"
-              title="Márcio Eliziário — Clínica Médica e Cardiologia"
+              title="Central de Telelaudos — Dr. Márcio Eliziário"
             >
               <BrandLogo size="md" layout="horizontal" />
             </Link>
           </div>
 
-          {/* ÁREA DE CONTROLE DE SESSÃO E ORGANIZAÇÃO */}
+          {/* ÁREA DIREITA DO CABEÇALHO */}
           <div className="flex items-center gap-3 shrink-0">
             {isAuthenticated && user ? (
               <div className="flex items-center gap-2.5 sm:gap-3">
-                {/* SELETOR ELEGANTE "ALTERNAR AMBIENTE" (Dr. Márcio / Multi-Perfil) */}
+                {/* ALTERNÂNCIA ADMINISTRAÇÃO / CARDIOLOGIA (para usuários autorizados) */}
                 {canSwitchEnvironment && (
-                  <div className="flex items-center bg-[#F7F6F4] p-0.5 rounded-lg border border-[#E3E6E8] shadow-2xs">
+                  <div className="flex items-center bg-[#F7F6F4] p-0.5 rounded-lg border border-[#E3E6E8]">
                     <button
                       type="button"
                       onClick={() => switchEnvironment('admin')}
                       className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
                         isAdminMode
-                          ? 'bg-white text-[#2F3942] shadow-xs border border-[#E3E6E8]'
+                          ? 'bg-white text-[#2F3942] shadow-2xs border border-[#E3E6E8]'
                           : 'text-[#6F7780] hover:text-[#2F3942]'
                       }`}
-                      title="Alternar para o ambiente de Gestão e Administração da Central"
+                      title="Mudar para o ambiente de Administração"
                     >
                       <ShieldCheck
                         className={`w-3.5 h-3.5 ${isAdminMode ? 'text-[#4A90D9]' : 'text-[#6F7780]'}`}
                       />
-                      <span className="hidden md:inline">Administração</span>
-                      <span className="md:hidden">Admin</span>
+                      <span className="hidden sm:inline">Administração</span>
+                      <span className="sm:hidden">Admin</span>
                     </button>
 
                     <button
@@ -196,42 +203,21 @@ export default function Layout() {
                       onClick={() => switchEnvironment('cardiologist')}
                       className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${
                         isCardioMode
-                          ? 'bg-[#4A90D9] text-white shadow-xs'
+                          ? 'bg-[#4A90D9] text-white shadow-2xs'
                           : 'text-[#6F7780] hover:text-[#2F3942]'
                       }`}
-                      title="Alternar para o ambiente de Eletrocardiografia e Laudos Médicos"
+                      title="Mudar para o ambiente de Cardiologia"
                     >
                       <Activity
                         className={`w-3.5 h-3.5 ${isCardioMode ? 'text-white' : 'text-[#6F7780]'}`}
                       />
-                      <span className="hidden md:inline">Cardiologia</span>
-                      <span className="md:hidden">Laudos</span>
+                      <span className="hidden sm:inline">Cardiologia</span>
+                      <span className="sm:hidden">Laudos</span>
                     </button>
                   </div>
                 )}
 
-                {/* Seletor de Organização (apenas se houver mais de uma) */}
-                {userOrgs.length > 1 && (
-                  <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-[#F7F6F4] border border-[#E3E6E8] text-xs">
-                    <Building2 className="w-3.5 h-3.5 text-[#6F7780]" />
-                    <select
-                      value={currentOrg?.id || ''}
-                      onChange={(e) => switchOrg(e.target.value)}
-                      aria-label="Selecionar Organização Ativa"
-                      className="bg-transparent text-[#2F3942] font-medium cursor-pointer focus:outline-none max-w-[130px] truncate"
-                    >
-                      {userOrgs.map((uo) => (
-                        <option key={uo.id} value={uo.organization_id}>
-                          {uo.expand?.organization_id?.trade_name ||
-                            uo.expand?.organization_id?.name ||
-                            'Organização'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Identificação Médica do Usuário e Badge do Ambiente Ativo */}
+                {/* AMBIENTE ATUAL & PERFIL CONECTADO */}
                 <div className="text-right hidden sm:block border-l border-[#E3E6E8] pl-3 py-0.5">
                   <div className="text-xs font-bold text-[#2F3942] truncate max-w-[170px]">
                     {user.name || user.email}
@@ -245,17 +231,18 @@ export default function Layout() {
                           : 'bg-blue-50 text-[#0E4C92] border-blue-200'
                       }`}
                     >
-                      {isAdminMode ? 'Ambiente Admin' : 'Ambiente Cardiologia'}
+                      {isAdminMode ? 'Administração' : 'Cardiologia'}
                     </Badge>
                   </div>
                 </div>
 
+                {/* LOGOUT */}
                 <Button
                   onClick={logout}
                   size="sm"
                   variant="outline"
-                  className="h-8 px-2.5 sm:px-3 text-xs text-[#6F7780] hover:text-red-700 hover:bg-red-50 hover:border-red-200 border-[#E3E6E8] rounded-md gap-1.5 font-medium transition-colors"
-                  title="Sair do sistema com segurança"
+                  className="h-8 px-2.5 sm:px-3 text-xs text-[#6F7780] hover:text-rose-700 hover:bg-rose-50 hover:border-rose-200 border-[#E3E6E8] rounded-md gap-1.5 font-medium transition-colors"
+                  title="Sair do sistema"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span className="hidden xs:inline">Sair</span>
@@ -264,117 +251,239 @@ export default function Layout() {
             ) : (
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium bg-[#4A90D9]/10 text-[#4A90D9] border border-[#4A90D9]/20">
                 <span className="w-2 h-2 rounded-full bg-[#4A90D9]" />
-                <span className="hidden sm:inline">Acesso Restrito Autorizado</span>
-                <span className="sm:hidden">Acesso Seguro</span>
+                <span>Central Segura</span>
               </div>
             )}
           </div>
         </div>
       </header>
 
-      {/* CORPO PRINCIPAL */}
+      {/* CORPO PRINCIPAL COM MENU LATERAL ÚNICO E RECOLHÍVEL */}
       {isAuthenticated && user ? (
-        /* Layout com Navegação Lateral para Usuários Autenticados */
         <div className="flex-1 w-full max-w-[1360px] mx-auto px-4 sm:px-6 py-6 flex gap-6">
-          {/* NAVEGAÇÃO LATERAL (DESKTOP) */}
-          <aside className="hidden lg:block w-64 shrink-0 space-y-4">
-            <div className="bg-white rounded-xl border border-[#E3E6E8] p-3 shadow-[0_1px_3px_rgba(47,57,66,0.03)]">
-              <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-[#6F7780] flex items-center justify-between">
-                <span>{isCardioMode ? 'Operação Clínica' : 'Módulos da Central'}</span>
-                <span className="text-[10px] font-normal text-[#4A90D9]">
-                  {isCardioMode ? 'ECG' : 'Admin'}
-                </span>
-              </div>
-              <nav className="space-y-1">
-                {navItems.map((item) => {
-                  const Icon = item.icon
-                  return (
+          {/* MENU LATERAL ÚNICO E RECOLHÍVEL (DESKTOP) */}
+          <aside
+            className={`hidden lg:block shrink-0 transition-all duration-200 ${
+              isDesktopCollapsed ? 'w-16' : 'w-60'
+            }`}
+          >
+            <div className="bg-white rounded-xl border border-[#E3E6E8] p-2.5 shadow-2xs space-y-3 sticky top-22">
+              {/* Se for modo Administrador: Apresenta as 5 seções + Configurações */}
+              {isAdminMode ? (
+                <>
+                  {!isDesktopCollapsed && (
+                    <div className="px-3 pt-1 pb-1 text-[11px] font-bold uppercase tracking-wider text-[#6F7780]">
+                      Menu Administrativo
+                    </div>
+                  )}
+
+                  {/* 5 Seções Principais */}
+                  <nav className="space-y-1">
+                    {adminMainSections.map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          title={isDesktopCollapsed ? item.label : undefined}
+                          className={`flex items-center ${
+                            isDesktopCollapsed
+                              ? 'justify-center p-2.5'
+                              : 'justify-between px-3 py-2'
+                          } rounded-lg text-xs font-medium transition-colors ${
+                            item.active
+                              ? 'bg-[#4A90D9]/10 text-[#4A90D9] font-bold'
+                              : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Icon
+                              className={`w-4 h-4 shrink-0 ${
+                                item.active ? 'text-[#4A90D9]' : 'text-[#6F7780]'
+                              }`}
+                            />
+                            {!isDesktopCollapsed && <span className="truncate">{item.label}</span>}
+                          </div>
+                          {!isDesktopCollapsed && item.active && (
+                            <ChevronRight className="w-3.5 h-3.5 text-[#4A90D9] shrink-0" />
+                          )}
+                        </Link>
+                      )
+                    })}
+                  </nav>
+
+                  {/* Divisor discreto para o acesso secundário */}
+                  <div className="pt-2 border-t border-[#E3E6E8]">
+                    {!isDesktopCollapsed && (
+                      <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[#8C959E]">
+                        Acesso Secundário
+                      </div>
+                    )}
                     <Link
-                      key={item.to}
-                      to={item.to}
-                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                        item.active
-                          ? 'bg-[#4A90D9]/10 text-[#4A90D9] font-bold shadow-xs'
+                      to={adminSecondarySection.to}
+                      title={isDesktopCollapsed ? adminSecondarySection.label : undefined}
+                      className={`flex items-center ${
+                        isDesktopCollapsed ? 'justify-center p-2.5' : 'justify-between px-3 py-2'
+                      } rounded-lg text-xs font-medium transition-colors ${
+                        adminSecondarySection.active
+                          ? 'bg-[#4A90D9]/10 text-[#4A90D9] font-bold'
                           : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4]'
                       }`}
                     >
-                      <div className="flex items-center gap-2.5">
-                        <Icon
-                          className={`w-4 h-4 ${item.active ? 'text-[#4A90D9]' : 'text-[#6F7780]'}`}
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Settings
+                          className={`w-4 h-4 shrink-0 ${
+                            adminSecondarySection.active ? 'text-[#4A90D9]' : 'text-[#6F7780]'
+                          }`}
                         />
-                        <span>{item.label}</span>
+                        {!isDesktopCollapsed && (
+                          <span className="truncate">{adminSecondarySection.label}</span>
+                        )}
                       </div>
-                      {item.active && <ChevronRight className="w-3.5 h-3.5 text-[#4A90D9]" />}
+                      {!isDesktopCollapsed && adminSecondarySection.active && (
+                        <ChevronRight className="w-3.5 h-3.5 text-[#4A90D9] shrink-0" />
+                      )}
                     </Link>
-                  )
-                })}
-              </nav>
-            </div>
-
-            {/* Cartão de Resumo Institucional */}
-            <div className="bg-white rounded-xl border border-[#E3E6E8] p-4 text-xs text-[#6F7780] space-y-2.5 shadow-[0_1px_3px_rgba(47,57,66,0.03)]">
-              <div className="flex items-center gap-2 text-[#2F3942] font-bold text-xs">
-                <ShieldCheck className="w-4 h-4 text-[#4A90D9]" />
-                <span>Padrões e Diretrizes</span>
-              </div>
-              <p className="text-[11px] leading-relaxed">
-                Diretriz SBC 2022 • Trilha de Auditoria SHA-256 • Resolução CFM nº 2.314/2022 •
-                Sessão de 12h
-              </p>
-              <div className="pt-2 border-t border-[#E3E6E8] text-[10px] text-[#6F7780] flex items-center justify-between">
-                <span>Versão da Central</span>
-                <span className="font-mono font-semibold text-[#2F3942]">
-                  {APP_CONFIG.versionLabel}
-                </span>
-              </div>
+                  </div>
+                </>
+              ) : (
+                /* Modo Cardiologista: Menus clínicos habituais */
+                <>
+                  {!isDesktopCollapsed && (
+                    <div className="px-3 pt-1 pb-1 text-[11px] font-bold uppercase tracking-wider text-[#6F7780]">
+                      Operação Clínica
+                    </div>
+                  )}
+                  <nav className="space-y-1">
+                    {clinicalNavItems.map((item) => {
+                      const Icon = item.icon
+                      return (
+                        <Link
+                          key={item.to}
+                          to={item.to}
+                          title={isDesktopCollapsed ? item.label : undefined}
+                          className={`flex items-center ${
+                            isDesktopCollapsed
+                              ? 'justify-center p-2.5'
+                              : 'justify-between px-3 py-2'
+                          } rounded-lg text-xs font-medium transition-colors ${
+                            item.active
+                              ? 'bg-[#4A90D9]/10 text-[#4A90D9] font-bold'
+                              : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Icon
+                              className={`w-4 h-4 shrink-0 ${
+                                item.active ? 'text-[#4A90D9]' : 'text-[#6F7780]'
+                              }`}
+                            />
+                            {!isDesktopCollapsed && <span className="truncate">{item.label}</span>}
+                          </div>
+                          {!isDesktopCollapsed && item.active && (
+                            <ChevronRight className="w-3.5 h-3.5 text-[#4A90D9] shrink-0" />
+                          )}
+                        </Link>
+                      )
+                    })}
+                  </nav>
+                </>
+              )}
             </div>
           </aside>
 
           {/* GAVETA LATERAL MOBILE */}
-          {isSidebarOpen && (
+          {isMobileSidebarOpen && (
             <div className="fixed inset-0 z-50 lg:hidden flex">
               <div
                 className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs transition-opacity"
-                onClick={() => setIsSidebarOpen(false)}
+                onClick={() => setIsMobileSidebarOpen(false)}
               />
               <div className="relative w-72 max-w-[80vw] bg-white h-full p-4 flex flex-col justify-between shadow-xl z-10 border-r border-[#E3E6E8]">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-[#E3E6E8]">
                     <BrandLogo size="sm" layout="horizontal" />
                     <button
-                      onClick={() => setIsSidebarOpen(false)}
+                      onClick={() => setIsMobileSidebarOpen(false)}
                       className="p-1.5 rounded-lg text-[#6F7780] hover:bg-[#F7F6F4]"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
 
-                  <nav className="space-y-1">
-                    {navItems.map((item) => {
-                      const Icon = item.icon
-                      return (
+                  {isAdminMode ? (
+                    <div className="space-y-3">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-[#6F7780] px-1">
+                        Menu Administrativo
+                      </div>
+                      <nav className="space-y-1">
+                        {adminMainSections.map((item) => {
+                          const Icon = item.icon
+                          return (
+                            <Link
+                              key={item.to}
+                              to={item.to}
+                              onClick={() => setIsMobileSidebarOpen(false)}
+                              className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium ${
+                                item.active
+                                  ? 'bg-[#4A90D9]/10 text-[#4A90D9] font-bold'
+                                  : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <Icon className="w-4 h-4" />
+                                <span>{item.label}</span>
+                              </div>
+                            </Link>
+                          )
+                        })}
+                      </nav>
+
+                      <div className="pt-2 border-t border-[#E3E6E8]">
                         <Link
-                          key={item.to}
-                          to={item.to}
-                          onClick={() => setIsSidebarOpen(false)}
+                          to={adminSecondarySection.to}
+                          onClick={() => setIsMobileSidebarOpen(false)}
                           className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium ${
-                            item.active
+                            adminSecondarySection.active
                               ? 'bg-[#4A90D9]/10 text-[#4A90D9] font-bold'
                               : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4]'
                           }`}
                         >
                           <div className="flex items-center gap-2.5">
-                            <Icon className="w-4 h-4" />
-                            <span>{item.label}</span>
+                            <Settings className="w-4 h-4" />
+                            <span>{adminSecondarySection.label}</span>
                           </div>
                         </Link>
-                      )
-                    })}
-                  </nav>
+                      </div>
+                    </div>
+                  ) : (
+                    <nav className="space-y-1">
+                      {clinicalNavItems.map((item) => {
+                        const Icon = item.icon
+                        return (
+                          <Link
+                            key={item.to}
+                            to={item.to}
+                            onClick={() => setIsMobileSidebarOpen(false)}
+                            className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium ${
+                              item.active
+                                ? 'bg-[#4A90D9]/10 text-[#4A90D9] font-bold'
+                                : 'text-[#6F7780] hover:text-[#2F3942] hover:bg-[#F7F6F4]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <Icon className="w-4 h-4" />
+                              <span>{item.label}</span>
+                            </div>
+                          </Link>
+                        )
+                      })}
+                    </nav>
+                  )}
                 </div>
 
                 <div className="text-[11px] text-[#6F7780] pt-4 border-t border-[#E3E6E8]">
-                  Central de Telelaudos em Cardiologia
+                  Central de Telelaudos de ECG
                 </div>
               </div>
             </div>
@@ -392,66 +501,21 @@ export default function Layout() {
         </main>
       )}
 
-      {/* RODAPÉ INSTITUCIONAL */}
-      {isAuthenticated && user ? (
-        <footer className="w-full bg-[#2F3942] text-slate-200 border-t border-[#1f262c] mt-12 py-8 transition-colors">
-          <div className="max-w-[1360px] mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-6 text-sm">
-            <div className="space-y-1 text-center md:text-left">
-              <div className="flex items-center justify-center md:justify-start gap-2 text-white font-semibold">
-                <BrandLogo size="sm" showText={false} />
-                <span>Márcio Eliziário — Clínica Médica e Cardiologia</span>
-              </div>
-              <p className="text-[#A2ABB3] text-xs max-w-2xl leading-relaxed">
-                Central de Telelaudos em Eletrocardiografia alinhada às Diretrizes da SBC e do CFM.
-                Imutabilidade documental com SHA-256, segurança em repouso AES-256 e auditoria
-                contínua de acessos.
-              </p>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-center gap-4 text-xs text-[#A2ABB3] shrink-0">
-              {isAdminMode && (
-                <div className="flex items-center gap-2">
-                  <Link
-                    to="/admin/teste-assinatura"
-                    className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs font-semibold"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#4A90D9]" />
-                    <span>ICP-Brasil</span>
-                  </Link>
-                  <Link
-                    to="/homologacao"
-                    className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-slate-300" />
-                    <span>Homologação</span>
-                  </Link>
-                  <Link
-                    to="/admin/auditoria-infra"
-                    className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md border border-white/10 transition-colors text-white text-xs"
-                  >
-                    <Server className="w-3.5 h-3.5 text-slate-300" />
-                    <span>Infraestrutura</span>
-                  </Link>
-                </div>
-              )}
-              <div className="flex items-center gap-1.5 text-[#A2ABB3] font-mono text-[11px]">
-                <span>Central {APP_CONFIG.versionLabel}</span>
-              </div>
-            </div>
-          </div>
-        </footer>
-      ) : (
-        <footer className="w-full border-t border-[#E3E6E8] py-4 bg-white text-center text-xs text-[#6F7780]">
-          <div className="max-w-md mx-auto px-4 flex flex-col items-center gap-1">
-            <span className="font-medium text-[#2F3942]">
+      {/* RODAPÉ INSTITUCIONAL DISCRETO */}
+      <footer className="w-full bg-[#2F3942] text-slate-300 border-t border-[#1f262c] mt-auto py-5 text-xs">
+        <div className="max-w-[1360px] mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+          <div className="space-y-0.5">
+            <div className="font-semibold text-white">
               Márcio Eliziário — Clínica Médica e Cardiologia
-            </span>
-            <span className="text-[11px] text-[#8C959E]">
-              Central de Telelaudos de ECG • Plataforma em conformidade com CFM e SBC
-            </span>
+            </div>
+            <p className="text-[11px] text-[#A2ABB3]">
+              Central de Telelaudos em Eletrocardiografia • Diretrizes SBC e CFM • Assinatura
+              ICP-Brasil PAdES
+            </p>
           </div>
-        </footer>
-      )}
+          <div className="text-[11px] text-[#A2ABB3] font-mono">Ambiente Seguro</div>
+        </div>
+      </footer>
     </div>
   )
 }

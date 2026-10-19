@@ -4509,13 +4509,12 @@ onRecordAuthRequest((e) => {
 // ROTAS DE ADMINISTRAÇÃO AUTÔNOMA DE USUÁRIOS E ORGANIZAÇÕES
 // -------------------------------------------------------------
 
-// Helper inline autossuficiente para obter e validar contexto administrativo
-const resolveAdminContext = (e) => {
+// 0. Administração de Clínicas/Organizações
+routerAdd('POST', '/backend/v1/admin/organizations', (e) => {
   const authRecord = e.auth
   if (!authRecord) {
     throw new ForbiddenError('Acesso restrito a usuários autenticados.')
   }
-
   const uos = $app.findRecordsByFilter(
     'user_organizations',
     `user_id = '${authRecord.id}' && is_active = true`,
@@ -4523,7 +4522,6 @@ const resolveAdminContext = (e) => {
     50,
     0,
   )
-
   const isPrimary =
     authRecord.getBool('is_primary_admin') ||
     authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
@@ -4531,22 +4529,15 @@ const resolveAdminContext = (e) => {
   const clinicManagerOrgs = uos
     .filter((uo) => uo.getString('role') === 'clinic_manager')
     .map((uo) => uo.getString('organization_id'))
-
   if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
     throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
   }
-
-  return {
+  const ctx = {
     caller: authRecord,
     isGlobalAdmin,
     isPrimaryAdmin: isPrimary,
     clinicManagerOrgs,
   }
-}
-
-// 0. Administração de Clínicas/Organizações
-routerAdd('POST', '/backend/v1/admin/organizations', (e) => {
-  const ctx = resolveAdminContext(e)
   if (!ctx.isGlobalAdmin) {
     throw new ForbiddenError('Apenas administradores globais podem cadastrar novas organizações.')
   }
@@ -4623,7 +4614,33 @@ routerAdd('POST', '/backend/v1/admin/organizations', (e) => {
 })
 
 routerAdd('PUT', '/backend/v1/admin/organizations/{id}', (e) => {
-  const ctx = resolveAdminContext(e)
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+  const uos = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isPrimary =
+    authRecord.getBool('is_primary_admin') ||
+    authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
+  const isGlobalAdmin = isPrimary || uos.some((uo) => uo.getString('role') === 'admin')
+  const clinicManagerOrgs = uos
+    .filter((uo) => uo.getString('role') === 'clinic_manager')
+    .map((uo) => uo.getString('organization_id'))
+  if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
+    throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
+  }
+  const ctx = {
+    caller: authRecord,
+    isGlobalAdmin,
+    isPrimaryAdmin: isPrimary,
+    clinicManagerOrgs,
+  }
   const orgId = e.request.pathValue('id')
 
   if (!ctx.isGlobalAdmin && !ctx.clinicManagerOrgs.includes(orgId)) {
@@ -4670,140 +4687,243 @@ routerAdd('PUT', '/backend/v1/admin/organizations/{id}', (e) => {
 
 // 1. Listar usuários com filtros de segurança multi-tenant
 routerAdd('GET', '/backend/v1/admin/users', (e) => {
-  const ctx = resolveAdminContext(e)
-  const qName = e.request ? e.request.url.query().get('name') || '' : ''
-  const qEmail = e.request ? e.request.url.query().get('email') || '' : ''
-  const qRole = e.request ? e.request.url.query().get('role') || '' : ''
-  const qOrgId = e.request ? e.request.url.query().get('organization_id') || '' : ''
-  const qStatus = e.request ? e.request.url.query().get('status') || '' : ''
-
-  // Se não for admin global, só pode listar usuários da sua própria clínica
-  if (!ctx.isGlobalAdmin) {
-    if (qOrgId && !ctx.clinicManagerOrgs.includes(qOrgId)) {
-      throw new ForbiddenError(
-        'Acesso negado: administradores de clínica não podem visualizar outras clínicas.',
-      )
+  try {
+    const authRecord = e.auth
+    if (!authRecord) {
+      throw new ForbiddenError('Acesso restrito a usuários autenticados.')
     }
-  }
-
-  let userFilter = "id != ''"
-  if (qName) {
-    userFilter += ` && name ~ '${qName.replace(/'/g, "\\'")}'`
-  }
-  if (qEmail) {
-    userFilter += ` && email ~ '${qEmail.replace(/'/g, "\\'")}'`
-  }
-  if (qStatus === 'active') {
-    userFilter += ' && is_active = true'
-  } else if (qStatus === 'inactive') {
-    userFilter += ' && is_active = false'
-  }
-
-  const allUsers = $app.findRecordsByFilter('users', userFilter, '-created', 200, 0)
-  const allUserOrgs = $app.findRecordsByFilter('user_organizations', "id != ''", '-created', 500, 0)
-  const allDoctors = $app.findRecordsByFilter('doctors', "id != ''", '-created', 200, 0)
-  const allOrgs = $app.findRecordsByFilter('organizations', "id != ''", 'name', 200, 0)
-
-  // Mapear organizações por ID para resposta rápida
-  const orgMap = {}
-  for (const org of allOrgs) {
-    orgMap[org.id] = {
-      id: org.id,
-      name: org.getString('name'),
-      trade_name: org.getString('trade_name'),
-      cnpj: org.getString('cnpj'),
-      type: org.getString('type'),
-      is_active: org.getBool('is_active'),
-      city: org.getString('city'),
-      state: org.getString('state'),
+    const uos = $app.findRecordsByFilter(
+      'user_organizations',
+      `user_id = '${authRecord.id}' && is_active = true`,
+      '',
+      50,
+      0,
+    )
+    const isPrimary =
+      authRecord.getBool('is_primary_admin') ||
+      authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
+    const isGlobalAdmin = isPrimary || uos.some((uo) => uo.getString('role') === 'admin')
+    const clinicManagerOrgs = uos
+      .filter((uo) => uo.getString('role') === 'clinic_manager')
+      .map((uo) => uo.getString('organization_id'))
+    if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
+      throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
     }
-  }
+    const ctx = {
+      caller: authRecord,
+      isGlobalAdmin,
+      isPrimaryAdmin: isPrimary,
+      clinicManagerOrgs,
+    }
 
-  const result = []
+    let qName = ''
+    let qEmail = ''
+    let qRole = ''
+    let qOrgId = ''
+    let qStatus = ''
+    try {
+      if (e.request && e.request.url) {
+        const q = e.request.url.query()
+        qName = q.get('name') || ''
+        qEmail = q.get('email') || ''
+        qRole = q.get('role') || ''
+        qOrgId = q.get('organization_id') || ''
+        qStatus = q.get('status') || ''
+      }
+    } catch (_) {
+      try {
+        const reqInfo = e.requestInfo()
+        if (reqInfo && reqInfo.query) {
+          qName = reqInfo.query.name || ''
+          qEmail = reqInfo.query.email || ''
+          qRole = reqInfo.query.role || ''
+          qOrgId = reqInfo.query.organization_id || ''
+          qStatus = reqInfo.query.status || ''
+        }
+      } catch (_) {}
+    }
 
-  for (const u of allUsers) {
-    // Vínculos organizacionais deste usuário
-    const uLinks = allUserOrgs.filter((uo) => uo.getString('user_id') === u.id)
-
-    // Se o chamador for gestor de clínica local, verificar se o usuário pertence à mesma clínica
+    // Se não for admin global, só pode listar usuários da sua própria clínica
     if (!ctx.isGlobalAdmin) {
-      const belongsToMyClinics = uLinks.some((l) =>
-        ctx.clinicManagerOrgs.includes(l.getString('organization_id')),
-      )
-      if (!belongsToMyClinics) {
-        continue // Usuário oculto para isolamento multi-tenant
+      if (qOrgId && !ctx.clinicManagerOrgs.includes(qOrgId)) {
+        throw new ForbiddenError(
+          'Acesso negado: administradores de clínica não podem visualizar outras clínicas.',
+        )
       }
     }
 
-    // Filtrar por clínica se solicitado
-    if (qOrgId) {
-      const matchOrg = uLinks.some((l) => l.getString('organization_id') === qOrgId)
-      if (!matchOrg) continue
+    let userFilter = "id != ''"
+    if (qName) {
+      userFilter += ` && name ~ '${qName.replace(/'/g, "\\'")}'`
+    }
+    if (qEmail) {
+      userFilter += ` && email ~ '${qEmail.replace(/'/g, "\\'")}'`
+    }
+    if (qStatus === 'active') {
+      userFilter += ' && is_active = true'
+    } else if (qStatus === 'inactive') {
+      userFilter += ' && is_active = false'
     }
 
-    // Filtrar por role se solicitado
-    if (qRole) {
-      const matchRole = uLinks.some((l) => l.getString('role') === qRole)
-      if (!matchRole) continue
+    let allUsers = []
+    try {
+      allUsers = $app.findRecordsByFilter('users', userFilter, '-created', 200, 0)
+    } catch (usersErr) {
+      allUsers = $app.findRecordsByFilter('_pb_users_auth_', userFilter, '-created', 200, 0)
+    }
+    const allUserOrgs = $app.findRecordsByFilter(
+      'user_organizations',
+      "id != ''",
+      '-created',
+      500,
+      0,
+    )
+    const allDoctors = $app.findRecordsByFilter('doctors', "id != ''", '-created', 200, 0)
+    const allOrgs = $app.findRecordsByFilter('organizations', "id != ''", 'name', 200, 0)
+
+    // Mapear organizações por ID para resposta rápida
+    const orgMap = {}
+    for (const org of allOrgs) {
+      orgMap[org.id] = {
+        id: org.id,
+        name: org.getString('name'),
+        trade_name: org.getString('trade_name'),
+        cnpj: org.getString('cnpj'),
+        type: org.getString('type'),
+        is_active: org.getBool('is_active'),
+        city: org.getString('city'),
+        state: org.getString('state'),
+      }
     }
 
-    // Dados médicos (se cardiologista)
-    const docRecords = allDoctors.filter((d) => d.getString('user_id') === u.id)
-    const doctorData =
-      docRecords.length > 0
-        ? {
-            id: docRecords[0].id,
-            crm: docRecords[0].getString('crm'),
-            crm_state: docRecords[0].getString('crm_state'),
-            rqe: docRecords[0].getString('rqe'),
-            specialty: docRecords[0].getString('specialty'),
-            is_active: docRecords[0].getBool('is_active'),
-            notes: docRecords[0].getString('notes'),
-          }
-        : null
+    const result = []
 
-    const formattedLinks = uLinks.map((uo) => ({
-      id: uo.id,
-      organization_id: uo.getString('organization_id'),
-      organization_name: orgMap[uo.getString('organization_id')]
-        ? orgMap[uo.getString('organization_id')].name
-        : '',
-      organization_type: orgMap[uo.getString('organization_id')]
-        ? orgMap[uo.getString('organization_id')].type
-        : '',
-      role: uo.getString('role'),
-      title_position: uo.getString('title_position'),
-      is_active: uo.getBool('is_active'),
-    }))
+    for (const u of allUsers) {
+      // Vínculos organizacionais deste usuário
+      const uLinks = allUserOrgs.filter((uo) => uo.getString('user_id') === u.id)
 
-    result.push({
-      id: u.id,
-      name: u.getString('name'),
-      email: u.getString('email'),
-      phone: u.getString('phone'),
-      is_active: u.getBool('is_active'),
-      is_primary_admin:
-        u.getBool('is_primary_admin') || u.getString('email') === 'marcio.eliziario@hotmail.com',
-      mfa_enabled: u.getBool('mfa_enabled'),
-      mfa_enforced: u.getBool('mfa_enforced'),
-      last_revoked_at: u.getString('last_revoked_at'),
-      created: u.getString('created'),
-      updated: u.getString('updated'),
-      organizations: formattedLinks,
-      doctor: doctorData,
+      // Se o chamador for gestor de clínica local, verificar se o usuário pertence à mesma clínica
+      if (!ctx.isGlobalAdmin) {
+        const belongsToMyClinics = uLinks.some((l) =>
+          ctx.clinicManagerOrgs.includes(l.getString('organization_id')),
+        )
+        if (!belongsToMyClinics) {
+          continue // Usuário oculto para isolamento multi-tenant
+        }
+      }
+
+      // Filtrar por clínica se solicitado
+      if (qOrgId) {
+        const matchOrg = uLinks.some((l) => l.getString('organization_id') === qOrgId)
+        if (!matchOrg) continue
+      }
+
+      // Filtrar por role se solicitado
+      if (qRole) {
+        const matchRole = uLinks.some((l) => l.getString('role') === qRole)
+        if (!matchRole) continue
+      }
+
+      // Dados médicos (se cardiologista)
+      const docRecords = allDoctors.filter((d) => d.getString('user_id') === u.id)
+      const doctorData =
+        docRecords.length > 0
+          ? {
+              id: docRecords[0].id,
+              crm: docRecords[0].getString('crm'),
+              crm_state: docRecords[0].getString('crm_state'),
+              rqe: docRecords[0].getString('rqe'),
+              specialty: docRecords[0].getString('specialty'),
+              is_active: docRecords[0].getBool('is_active'),
+              notes: docRecords[0].getString('notes'),
+            }
+          : null
+
+      const formattedLinks = uLinks.map((uo) => ({
+        id: uo.id,
+        organization_id: uo.getString('organization_id'),
+        organization_name: orgMap[uo.getString('organization_id')]
+          ? orgMap[uo.getString('organization_id')].name
+          : '',
+        organization_type: orgMap[uo.getString('organization_id')]
+          ? orgMap[uo.getString('organization_id')].type
+          : '',
+        role: uo.getString('role'),
+        title_position: uo.getString('title_position'),
+        is_active: uo.getBool('is_active'),
+      }))
+
+      result.push({
+        id: u.id,
+        name: u.getString('name'),
+        email: u.getString('email'),
+        phone: u.getString('phone'),
+        is_active: u.getBool('is_active'),
+        is_primary_admin:
+          u.getBool('is_primary_admin') || u.getString('email') === 'marcio.eliziario@hotmail.com',
+        mfa_enabled: u.getBool('mfa_enabled'),
+        mfa_enforced: u.getBool('mfa_enforced'),
+        last_revoked_at: u.getString('last_revoked_at'),
+        created: u.getString('created'),
+        updated: u.getString('updated'),
+        organizations: formattedLinks,
+        doctor: doctorData,
+      })
+    }
+
+    return e.json(200, {
+      success: true,
+      total: result.length,
+      users: result,
+    })
+  } catch (err) {
+    console.error('ERRO GET /backend/v1/admin/users:', err)
+    if (typeof ApiError !== 'undefined' && err instanceof ApiError) {
+      throw err
+    }
+    if (err.status && err.message) {
+      return e.json(err.status, {
+        data: {},
+        message: err.message,
+        status: err.status,
+      })
+    }
+    return e.json(500, {
+      data: {},
+      message: 'Erro interno ao listar usuários: ' + (err.message || String(err)),
+      status: 500,
     })
   }
-
-  return e.json(200, {
-    success: true,
-    total: result.length,
-    users: result,
-  })
 })
-
 // 2. Cadastrar novo usuário com perfil, vínculo e dados médicos (se cardiologista)
 routerAdd('POST', '/backend/v1/admin/users', (e) => {
-  const ctx = resolveAdminContext(e)
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+  const uos = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isPrimary =
+    authRecord.getBool('is_primary_admin') ||
+    authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
+  const isGlobalAdmin = isPrimary || uos.some((uo) => uo.getString('role') === 'admin')
+  const clinicManagerOrgs = uos
+    .filter((uo) => uo.getString('role') === 'clinic_manager')
+    .map((uo) => uo.getString('organization_id'))
+  if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
+    throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
+  }
+  const ctx = {
+    caller: authRecord,
+    isGlobalAdmin,
+    isPrimaryAdmin: isPrimary,
+    clinicManagerOrgs,
+  }
   let body = {}
   try {
     body = e.requestInfo().body || {}
@@ -4967,7 +5087,33 @@ routerAdd('POST', '/backend/v1/admin/users', (e) => {
 
 // 3. Atualizar dados cadastrais do usuário (nome, telefone, vínculo, papel, dados médicos)
 routerAdd('PUT', '/backend/v1/admin/users/{id}', (e) => {
-  const ctx = resolveAdminContext(e)
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+  const uos = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isPrimary =
+    authRecord.getBool('is_primary_admin') ||
+    authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
+  const isGlobalAdmin = isPrimary || uos.some((uo) => uo.getString('role') === 'admin')
+  const clinicManagerOrgs = uos
+    .filter((uo) => uo.getString('role') === 'clinic_manager')
+    .map((uo) => uo.getString('organization_id'))
+  if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
+    throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
+  }
+  const ctx = {
+    caller: authRecord,
+    isGlobalAdmin,
+    isPrimaryAdmin: isPrimary,
+    clinicManagerOrgs,
+  }
   const targetUserId = e.request.pathValue('id')
 
   let body = {}
@@ -5061,7 +5207,33 @@ routerAdd('PUT', '/backend/v1/admin/users/{id}', (e) => {
 
 // 4. Suspender usuário e revogar sessões ativas imediatamente
 routerAdd('POST', '/backend/v1/admin/users/{id}/suspend', (e) => {
-  const ctx = resolveAdminContext(e)
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+  const uos = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isPrimary =
+    authRecord.getBool('is_primary_admin') ||
+    authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
+  const isGlobalAdmin = isPrimary || uos.some((uo) => uo.getString('role') === 'admin')
+  const clinicManagerOrgs = uos
+    .filter((uo) => uo.getString('role') === 'clinic_manager')
+    .map((uo) => uo.getString('organization_id'))
+  if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
+    throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
+  }
+  const ctx = {
+    caller: authRecord,
+    isGlobalAdmin,
+    isPrimaryAdmin: isPrimary,
+    clinicManagerOrgs,
+  }
   const targetUserId = e.request.pathValue('id')
 
   let body = {}
@@ -5163,7 +5335,33 @@ routerAdd('POST', '/backend/v1/admin/users/{id}/suspend', (e) => {
 
 // 5. Reativar usuário suspenso
 routerAdd('POST', '/backend/v1/admin/users/{id}/reactivate', (e) => {
-  const ctx = resolveAdminContext(e)
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+  const uos = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isPrimary =
+    authRecord.getBool('is_primary_admin') ||
+    authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
+  const isGlobalAdmin = isPrimary || uos.some((uo) => uo.getString('role') === 'admin')
+  const clinicManagerOrgs = uos
+    .filter((uo) => uo.getString('role') === 'clinic_manager')
+    .map((uo) => uo.getString('organization_id'))
+  if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
+    throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
+  }
+  const ctx = {
+    caller: authRecord,
+    isGlobalAdmin,
+    isPrimaryAdmin: isPrimary,
+    clinicManagerOrgs,
+  }
   const targetUserId = e.request.pathValue('id')
 
   const targetUser = $app.findRecordById('users', targetUserId)
@@ -5237,7 +5435,33 @@ routerAdd('POST', '/backend/v1/admin/users/{id}/reactivate', (e) => {
 
 // 6. Atribuir ou revogar papel/vínculo organizacional de usuário
 routerAdd('POST', '/backend/v1/admin/users/{id}/roles', (e) => {
-  const ctx = resolveAdminContext(e)
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+  const uos = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isPrimary =
+    authRecord.getBool('is_primary_admin') ||
+    authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
+  const isGlobalAdmin = isPrimary || uos.some((uo) => uo.getString('role') === 'admin')
+  const clinicManagerOrgs = uos
+    .filter((uo) => uo.getString('role') === 'clinic_manager')
+    .map((uo) => uo.getString('organization_id'))
+  if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
+    throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
+  }
+  const ctx = {
+    caller: authRecord,
+    isGlobalAdmin,
+    isPrimaryAdmin: isPrimary,
+    clinicManagerOrgs,
+  }
   const targetUserId = e.request.pathValue('id')
 
   let body = {}
@@ -5345,7 +5569,33 @@ routerAdd('POST', '/backend/v1/admin/users/{id}/roles', (e) => {
 
 // 7. Envio de convite de acesso / Redefinição administrativa de senha
 routerAdd('POST', '/backend/v1/admin/users/{id}/send-invite-or-reset', (e) => {
-  const ctx = resolveAdminContext(e)
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+  const uos = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isPrimary =
+    authRecord.getBool('is_primary_admin') ||
+    authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
+  const isGlobalAdmin = isPrimary || uos.some((uo) => uo.getString('role') === 'admin')
+  const clinicManagerOrgs = uos
+    .filter((uo) => uo.getString('role') === 'clinic_manager')
+    .map((uo) => uo.getString('organization_id'))
+  if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
+    throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
+  }
+  const ctx = {
+    caller: authRecord,
+    isGlobalAdmin,
+    isPrimaryAdmin: isPrimary,
+    clinicManagerOrgs,
+  }
   const targetUserId = e.request.pathValue('id')
 
   let body = {}
@@ -5408,7 +5658,33 @@ routerAdd('POST', '/backend/v1/admin/users/{id}/send-invite-or-reset', (e) => {
 // 8. Exclusão segura de cadastro de usuário
 // Permitida SOMENTE quando não comprometer registros clínicos, financeiros, laudos ou obrigações de retenção
 routerAdd('DELETE', '/backend/v1/admin/users/{id}', (e) => {
-  const ctx = resolveAdminContext(e)
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+  const uos = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isPrimary =
+    authRecord.getBool('is_primary_admin') ||
+    authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
+  const isGlobalAdmin = isPrimary || uos.some((uo) => uo.getString('role') === 'admin')
+  const clinicManagerOrgs = uos
+    .filter((uo) => uo.getString('role') === 'clinic_manager')
+    .map((uo) => uo.getString('organization_id'))
+  if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
+    throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
+  }
+  const ctx = {
+    caller: authRecord,
+    isGlobalAdmin,
+    isPrimaryAdmin: isPrimary,
+    clinicManagerOrgs,
+  }
   const targetUserId = e.request.pathValue('id')
 
   const targetUser = $app.findRecordById('users', targetUserId)

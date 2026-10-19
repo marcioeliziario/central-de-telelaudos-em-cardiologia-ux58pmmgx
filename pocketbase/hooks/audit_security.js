@@ -4510,8 +4510,7 @@ onRecordAuthRequest((e) => {
 // -------------------------------------------------------------
 
 // Helper inline para validar permissão de admin e obter contexto do chamador
-// Retorna { caller, isGlobalAdmin, isPrimaryAdmin, callerClinicOrgIds }
-const getAdminContext = (e) => {
+function getAdminContext(e) {
   const authRecord = e.auth
   if (!authRecord) {
     throw new ForbiddenError('Acesso restrito a usuários autenticados.')

@@ -3,8 +3,8 @@
  * Evita strings fixas desatualizadas espalhadas pelos componentes.
  */
 export const APP_CONFIG = {
-  version: '0.0.44',
-  versionLabel: 'v0.0.44',
+  version: '0.0.45',
+  versionLabel: 'v0.0.45',
   stageName: 'MVP Telelaudos de ECG — Assinatura Digital Externa ICP-Brasil & Fluxo Simplificado',
   sessionDurationLabel: '12 horas (43.200s)',
   sessionDurationSecs: 43200,

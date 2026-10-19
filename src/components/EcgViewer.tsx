@@ -103,7 +103,7 @@ export default function EcgViewer({
   const [fileUrl, setFileUrl] = useState<string>('')
   const [fileBlobUrl, setFileBlobUrl] = useState<string>('')
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null)
-  const [isLoadingFile, setIsLoadingFile] = useState<boolean>(false)
+  const [isLoadingFile, setIsLoadingFile] = useState<boolean>(Boolean(exam.exam_file))
   const [fileLoadError, setFileLoadError] = useState<string | null>(null)
   const [reloadTrigger, setReloadTrigger] = useState<number>(0)
 
@@ -1072,8 +1072,8 @@ export default function EcgViewer({
                   className="pointer-events-none select-none bg-white"
                 />
               </div>
-            ) : (
-              /* Traçado de Imagem (PNG/JPG) com aspect-ratio e contenção */
+            ) : /* Traçado de Imagem (PNG/JPG) com aspect-ratio e contenção */
+            fileBlobUrl || fileUrl ? (
               <img
                 ref={imageRef}
                 src={fileBlobUrl || fileUrl}
@@ -1087,6 +1087,11 @@ export default function EcgViewer({
                 }}
                 className="object-contain rounded-lg border border-[#E3E6E8] shadow-sm bg-white pointer-events-none select-none"
               />
+            ) : (
+              <div className="min-h-[220px] flex flex-col items-center justify-center gap-2 text-slate-400">
+                <Loader2 className="w-6 h-6 animate-spin text-[#4A90D9]" />
+                <span className="text-xs">Carregando traçado...</span>
+              </div>
             )}
           </div>
         )}

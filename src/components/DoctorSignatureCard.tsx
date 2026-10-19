@@ -263,7 +263,7 @@ export function DoctorSignatureCard() {
           <div className="space-y-3">
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col sm:flex-row items-center gap-4">
               <div className="w-48 h-20 bg-white rounded border border-slate-300 p-1 flex items-center justify-center overflow-hidden shadow-inner">
-                {signatureData.imageDataUri ? (
+                {signatureData.imageDataUri && signatureData.imageDataUri.trim() !== '' ? (
                   <img
                     src={signatureData.imageDataUri}
                     alt="Assinatura manuscrita cadastrada"
@@ -392,7 +392,7 @@ export function DoctorSignatureCard() {
                 />
               </label>
 
-              {selectedImageDataUri && (
+              {selectedImageDataUri && selectedImageDataUri.trim() !== '' && (
                 <div className="mt-2 p-2 bg-slate-50 border border-slate-200 rounded flex items-center justify-center">
                   <img
                     src={selectedImageDataUri}
@@ -568,7 +568,7 @@ export function DoctorSignatureCard() {
           </DialogHeader>
 
           <div className="p-6 bg-slate-50 border border-slate-200 rounded-lg flex flex-col items-center justify-center space-y-4">
-            {signatureData?.imageDataUri ? (
+            {signatureData?.imageDataUri && signatureData.imageDataUri.trim() !== '' ? (
               <img
                 src={signatureData.imageDataUri}
                 alt="Assinatura ampliada"

@@ -461,7 +461,17 @@ export const MfaSecurityCard: React.FC = () => {
               {/* QR Code */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center justify-center text-center">
                 <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm mb-2">
-                  <img src={qrCodeImgUrl} alt="QR Code MFA" className="w-44 h-44 object-contain" />
+                  {qrCodeImgUrl ? (
+                    <img
+                      src={qrCodeImgUrl}
+                      alt="QR Code MFA"
+                      className="w-44 h-44 object-contain"
+                    />
+                  ) : (
+                    <div className="w-44 h-44 flex items-center justify-center text-xs text-slate-400">
+                      QR Code indisponível
+                    </div>
+                  )}
                 </div>
                 <span className="text-[11px] text-slate-500 font-medium">
                   Escaneie com a câmera do seu aplicativo de autenticação

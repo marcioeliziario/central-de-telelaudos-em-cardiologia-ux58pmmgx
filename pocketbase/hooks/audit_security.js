@@ -4509,8 +4509,8 @@ onRecordAuthRequest((e) => {
 // ROTAS DE ADMINISTRAÇÃO AUTÔNOMA DE USUÁRIOS E ORGANIZAÇÕES
 // -------------------------------------------------------------
 
-// Helper inline para validar permissão de admin e obter contexto do chamador
-function getAdminContext(e) {
+// Helper inline autossuficiente para obter e validar contexto administrativo
+const resolveAdminContext = (e) => {
   const authRecord = e.auth
   if (!authRecord) {
     throw new ForbiddenError('Acesso restrito a usuários autenticados.')
@@ -4546,7 +4546,7 @@ function getAdminContext(e) {
 
 // 0. Administração de Clínicas/Organizações
 routerAdd('POST', '/backend/v1/admin/organizations', (e) => {
-  const ctx = getAdminContext(e)
+  const ctx = resolveAdminContext(e)
   if (!ctx.isGlobalAdmin) {
     throw new ForbiddenError('Apenas administradores globais podem cadastrar novas organizações.')
   }
@@ -4623,7 +4623,7 @@ routerAdd('POST', '/backend/v1/admin/organizations', (e) => {
 })
 
 routerAdd('PUT', '/backend/v1/admin/organizations/{id}', (e) => {
-  const ctx = getAdminContext(e)
+  const ctx = resolveAdminContext(e)
   const orgId = e.request.pathValue('id')
 
   if (!ctx.isGlobalAdmin && !ctx.clinicManagerOrgs.includes(orgId)) {
@@ -4670,7 +4670,7 @@ routerAdd('PUT', '/backend/v1/admin/organizations/{id}', (e) => {
 
 // 1. Listar usuários com filtros de segurança multi-tenant
 routerAdd('GET', '/backend/v1/admin/users', (e) => {
-  const ctx = getAdminContext(e)
+  const ctx = resolveAdminContext(e)
   const qName = e.request ? e.request.url.query().get('name') || '' : ''
   const qEmail = e.request ? e.request.url.query().get('email') || '' : ''
   const qRole = e.request ? e.request.url.query().get('role') || '' : ''
@@ -4803,7 +4803,7 @@ routerAdd('GET', '/backend/v1/admin/users', (e) => {
 
 // 2. Cadastrar novo usuário com perfil, vínculo e dados médicos (se cardiologista)
 routerAdd('POST', '/backend/v1/admin/users', (e) => {
-  const ctx = getAdminContext(e)
+  const ctx = resolveAdminContext(e)
   let body = {}
   try {
     body = e.requestInfo().body || {}
@@ -4967,7 +4967,7 @@ routerAdd('POST', '/backend/v1/admin/users', (e) => {
 
 // 3. Atualizar dados cadastrais do usuário (nome, telefone, vínculo, papel, dados médicos)
 routerAdd('PUT', '/backend/v1/admin/users/{id}', (e) => {
-  const ctx = getAdminContext(e)
+  const ctx = resolveAdminContext(e)
   const targetUserId = e.request.pathValue('id')
 
   let body = {}
@@ -5061,7 +5061,7 @@ routerAdd('PUT', '/backend/v1/admin/users/{id}', (e) => {
 
 // 4. Suspender usuário e revogar sessões ativas imediatamente
 routerAdd('POST', '/backend/v1/admin/users/{id}/suspend', (e) => {
-  const ctx = getAdminContext(e)
+  const ctx = resolveAdminContext(e)
   const targetUserId = e.request.pathValue('id')
 
   let body = {}
@@ -5163,7 +5163,7 @@ routerAdd('POST', '/backend/v1/admin/users/{id}/suspend', (e) => {
 
 // 5. Reativar usuário suspenso
 routerAdd('POST', '/backend/v1/admin/users/{id}/reactivate', (e) => {
-  const ctx = getAdminContext(e)
+  const ctx = resolveAdminContext(e)
   const targetUserId = e.request.pathValue('id')
 
   const targetUser = $app.findRecordById('users', targetUserId)
@@ -5237,7 +5237,7 @@ routerAdd('POST', '/backend/v1/admin/users/{id}/reactivate', (e) => {
 
 // 6. Atribuir ou revogar papel/vínculo organizacional de usuário
 routerAdd('POST', '/backend/v1/admin/users/{id}/roles', (e) => {
-  const ctx = getAdminContext(e)
+  const ctx = resolveAdminContext(e)
   const targetUserId = e.request.pathValue('id')
 
   let body = {}
@@ -5345,7 +5345,7 @@ routerAdd('POST', '/backend/v1/admin/users/{id}/roles', (e) => {
 
 // 7. Envio de convite de acesso / Redefinição administrativa de senha
 routerAdd('POST', '/backend/v1/admin/users/{id}/send-invite-or-reset', (e) => {
-  const ctx = getAdminContext(e)
+  const ctx = resolveAdminContext(e)
   const targetUserId = e.request.pathValue('id')
 
   let body = {}
@@ -5408,7 +5408,7 @@ routerAdd('POST', '/backend/v1/admin/users/{id}/send-invite-or-reset', (e) => {
 // 8. Exclusão segura de cadastro de usuário
 // Permitida SOMENTE quando não comprometer registros clínicos, financeiros, laudos ou obrigações de retenção
 routerAdd('DELETE', '/backend/v1/admin/users/{id}', (e) => {
-  const ctx = getAdminContext(e)
+  const ctx = resolveAdminContext(e)
   const targetUserId = e.request.pathValue('id')
 
   const targetUser = $app.findRecordById('users', targetUserId)

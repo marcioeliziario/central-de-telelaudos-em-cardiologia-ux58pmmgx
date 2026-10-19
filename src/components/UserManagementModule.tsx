@@ -65,6 +65,7 @@ export const UserManagementModule: React.FC<UserManagementModuleProps> = ({
   const { user: currentAuthUser } = useAuth()
   const [users, setUsers] = useState<AdminManagedUserItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('all')
   const [orgFilter, setOrgFilter] = useState<string>('all')
@@ -135,20 +136,25 @@ export const UserManagementModule: React.FC<UserManagementModuleProps> = ({
 
   const fetchUsers = async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await adminUserService.listUsers({
-        name: searchTerm || undefined,
+        name: searchTerm.trim() || undefined,
         role: roleFilter !== 'all' ? roleFilter : undefined,
         organization_id: orgFilter !== 'all' ? orgFilter : undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined,
       })
-      if (res.success && res.users) {
+      if (res.success && Array.isArray(res.users)) {
         setUsers(res.users)
+      } else {
+        setLoadError('Resposta inválida recebida do servidor.')
       }
     } catch (err: any) {
+      const errorMsg = err.message || 'Falha de comunicação com o servidor.'
+      setLoadError(errorMsg)
       setFeedbackMessage({
         type: 'error',
-        text: `Erro ao listar usuários: ${err.message || 'Falha de comunicação com o servidor.'}`,
+        text: `Erro ao listar usuários: ${errorMsg}`,
       })
     } finally {
       setLoading(false)
@@ -425,9 +431,19 @@ export const UserManagementModule: React.FC<UserManagementModuleProps> = ({
             <h2 className="text-base font-bold text-[#2F3942]">
               Administração Autônoma de Usuários & Vínculos
             </h2>
-            <Badge className="bg-blue-50 text-[#4A90D9] border-blue-200 text-[10px]">
-              {users.length} usuários
-            </Badge>
+            {loadError ? (
+              <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px]">
+                Erro de consulta
+              </Badge>
+            ) : loading ? (
+              <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-[10px]">
+                Carregando...
+              </Badge>
+            ) : (
+              <Badge className="bg-blue-50 text-[#4A90D9] border-blue-200 text-[10px]">
+                {users.length} {users.length === 1 ? 'usuário encontrado' : 'usuários encontrados'}
+              </Badge>
+            )}
           </div>
           <p className="text-xs text-[#6F7780] mt-0.5">
             Gestão com autonomia da conta principal: controle de cardiologistas, gestores, clínicas
@@ -540,12 +556,46 @@ export const UserManagementModule: React.FC<UserManagementModuleProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {users.length === 0 ? (
+              {loadError ? (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center bg-rose-50/30">
+                    <div className="flex flex-col items-center justify-center space-y-2 max-w-md mx-auto">
+                      <AlertTriangle className="w-8 h-8 text-rose-500" />
+                      <div className="font-semibold text-rose-900 text-sm">
+                        Erro ao carregar usuários
+                      </div>
+                      <p className="text-xs text-rose-700 leading-relaxed font-mono">{loadError}</p>
+                      <Button
+                        size="sm"
+                        onClick={fetchUsers}
+                        variant="outline"
+                        className="mt-2 text-xs border-rose-300 text-rose-800 hover:bg-rose-100 gap-1.5"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Tentar novamente</span>
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ) : loading ? (
                 <tr>
                   <td colSpan={7} className="p-8 text-center text-[#6F7780]">
-                    {loading
-                      ? 'Carregando lista de usuários...'
-                      : 'Nenhum usuário encontrado para os critérios de busca.'}
+                    <div className="flex flex-col items-center justify-center space-y-2">
+                      <RotateCcw className="w-6 h-6 animate-spin text-[#4A90D9]" />
+                      <span className="text-xs">Carregando lista de usuários do backend...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : users.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-[#6F7780]">
+                    <div className="flex flex-col items-center justify-center space-y-1">
+                      <Users className="w-6 h-6 text-slate-300 mb-1" />
+                      <div className="font-semibold text-slate-700">Nenhum usuário cadastrado</div>
+                      <p className="text-xs text-slate-500">
+                        Nenhum registro corresponde aos filtros selecionados.
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : (

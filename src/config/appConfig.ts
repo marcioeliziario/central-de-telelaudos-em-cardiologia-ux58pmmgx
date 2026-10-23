@@ -3,8 +3,8 @@
  * Evita strings fixas desatualizadas espalhadas pelos componentes.
  */
 export const APP_CONFIG = {
-  version: '0.0.52',
-  versionLabel: 'v0.0.52',
+  version: '0.0.54',
+  versionLabel: 'v0.0.54',
   stageName: 'Central de Telelaudos de ECG — Administração de Usuários e Médicos (Etapa 2B)',
   sessionDurationLabel: '12 horas (43.200s)',
   sessionDurationSecs: 43200,

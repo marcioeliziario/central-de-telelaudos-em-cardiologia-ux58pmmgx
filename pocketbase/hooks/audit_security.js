@@ -4687,35 +4687,35 @@ routerAdd('PUT', '/backend/v1/admin/organizations/{id}', (e) => {
 
 // 1. Listar usuários com filtros de segurança multi-tenant
 routerAdd('GET', '/backend/v1/admin/users', (e) => {
-  try {
-    const authRecord = e.auth
-    if (!authRecord) {
-      throw new ForbiddenError('Acesso restrito a usuários autenticados.')
-    }
-    const uos = $app.findRecordsByFilter(
-      'user_organizations',
-      `user_id = '${authRecord.id}' && is_active = true`,
-      '',
-      50,
-      0,
-    )
-    const isPrimary =
-      authRecord.getBool('is_primary_admin') ||
-      authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
-    const isGlobalAdmin = isPrimary || uos.some((uo) => uo.getString('role') === 'admin')
-    const clinicManagerOrgs = uos
-      .filter((uo) => uo.getString('role') === 'clinic_manager')
-      .map((uo) => uo.getString('organization_id'))
-    if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
-      throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
-    }
-    const ctx = {
-      caller: authRecord,
-      isGlobalAdmin,
-      isPrimaryAdmin: isPrimary,
-      clinicManagerOrgs,
-    }
+  const authRecord = e.auth
+  if (!authRecord) {
+    throw new ForbiddenError('Acesso restrito a usuários autenticados.')
+  }
+  const uos = $app.findRecordsByFilter(
+    'user_organizations',
+    `user_id = '${authRecord.id}' && is_active = true`,
+    '',
+    50,
+    0,
+  )
+  const isPrimary =
+    authRecord.getBool('is_primary_admin') ||
+    authRecord.getString('email') === 'marcio.eliziario@hotmail.com'
+  const isGlobalAdmin = isPrimary || uos.some((uo) => uo.getString('role') === 'admin')
+  const clinicManagerOrgs = uos
+    .filter((uo) => uo.getString('role') === 'clinic_manager')
+    .map((uo) => uo.getString('organization_id'))
+  if (!isGlobalAdmin && clinicManagerOrgs.length === 0) {
+    throw new ForbiddenError('Acesso exclusivo a administradores autorizados.')
+  }
+  const ctx = {
+    caller: authRecord,
+    isGlobalAdmin,
+    isPrimaryAdmin: isPrimary,
+    clinicManagerOrgs,
+  }
 
+  try {
     let qName = ''
     let qEmail = ''
     let qRole = ''
@@ -4877,11 +4877,22 @@ routerAdd('GET', '/backend/v1/admin/users', (e) => {
       users: result,
     })
   } catch (err) {
-    console.error('ERRO GET /backend/v1/admin/users:', err)
-    if (typeof ApiError !== 'undefined' && err instanceof ApiError) {
+    console.log('ERRO GET /backend/v1/admin/users:', err)
+    if (
+      err &&
+      (err.name === 'ForbiddenError' ||
+        err.name === 'BadRequestError' ||
+        err.name === 'NotFoundError')
+    ) {
       throw err
     }
-    if (err.status && err.message) {
+    if (typeof ForbiddenError !== 'undefined' && err instanceof ForbiddenError) {
+      throw err
+    }
+    if (typeof BadRequestError !== 'undefined' && err instanceof BadRequestError) {
+      throw err
+    }
+    if (err && err.status && err.message) {
       return e.json(err.status, {
         data: {},
         message: err.message,
